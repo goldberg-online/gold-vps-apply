@@ -170,22 +170,17 @@ function Login() {
             </form>
 
             {mode === "in" ? (
-              <>
-                <button
-                  type="button"
-                  className="w-full text-center text-sm text-navy underline"
-                  onClick={() => {
-                    setMode("forgot");
-                    setError(null);
-                    setNote(null);
-                  }}
-                >
-                  Forgot password
-                </button>
-                <Link to="/" className="block w-full text-center text-sm text-navy underline">
-                  Back to school prospectus
-                </Link>
-              </>
+              <button
+                type="button"
+                className="w-full text-center text-sm text-navy underline"
+                onClick={() => {
+                  setMode("forgot");
+                  setError(null);
+                  setNote(null);
+                }}
+              >
+                Forgot password
+              </button>
             ) : (
               <button
                 type="button"
