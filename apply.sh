@@ -19,6 +19,7 @@ FILES=(
   src/components/student-typeahead.tsx
   src/components/announcement-feed.tsx
   src/components/prospectus.tsx
+  src/components/system-prospectus.tsx
   src/components/receipt-gallery.tsx
   src/routes/app/cumulative.tsx
   src/routes/app/students.tsx
@@ -36,6 +37,7 @@ FILES=(
   src/routes/index.tsx
   src/routes/looks.tsx
   src/routes/login.tsx
+  src/routes/online.tsx
   src/styles.css
   migrations/0015_enrolled_on.sql
   migrations/0016_cumulative.sql
@@ -54,15 +56,15 @@ for f in "${FILES[@]}"; do
   echo "WROTE $f $(wc -c < "$dest")"
 done
 
-if [ "$n" -ne 32 ]; then
-  echo "expected 32 files, got $n"; exit 1
+if [ "$n" -ne 34 ]; then
+  echo "expected 34 files, got $n"; exit 1
 fi
 grep -q attachCumulativeCard "$ROOT/src/lib/school.ts" || { echo "school.ts did not land"; exit 1; }
 grep -q "Pupils by class" "$ROOT/src/routes/app/cumulative.tsx" || { echo "cumulative page did not land"; exit 1; }
 grep -q postAnnouncement "$ROOT/src/lib/announcements.ts" || { echo "announcements lib did not land"; exit 1; }
 grep -q 'href: "/app/announcements"' "$ROOT/src/routes/app.tsx" || { echo "announcements menu did not land"; exit 1; }
-grep -q "School management prospectus" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus did not land"; exit 1; }
-echo "OK 32 files under $ROOT"
+grep -q "A Christian private school in Accra" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus did not land"; exit 1; }
+echo "OK 34 files under $ROOT"
 
 echo
 echo "Building and restarting GOLD..."
