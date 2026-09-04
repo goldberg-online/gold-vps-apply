@@ -6,6 +6,7 @@ import { getCumulativeRecord } from "@/lib/academic-ops";
 import { num } from "@/lib/ghana";
 import { Card, Money } from "@/components/ui";
 import { CumulativeRecordSheet } from "@/components/cumulative-record";
+import { AnnouncementFeed } from "@/components/announcement-feed";
 
 export const Route = createFileRoute("/app/")({ component: Overview });
 
@@ -82,7 +83,7 @@ function Overview() {
             ))
           : null}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card title="Headcount by class" desc="Live roll from enrollment.">
           {d.classCounts.length === 0 ? (
             <p className="text-sm text-muted">No students enrolled yet.</p>
@@ -122,6 +123,7 @@ function Overview() {
             </dl>
           )}
         </Card>
+        <AnnouncementFeed limit={5} compose />
       </div>
       {d.recent.length > 0 && role !== "SCHOOL_ADMIN" ? (
         <Card title="Latest activity" desc={admin ? "Full trail is on Audit." : "Your finance desk."}>
@@ -236,13 +238,28 @@ function ParentDesk() {
             : "Results and fees for your wards only. This is a parent login, not a staff account."}
         </p>
         <p className="mt-2 text-sm">
-          <Link to="/app/timetable" className="text-ink underline">Timetable</Link>
+          <Link to="/app/timetable" className="text-ink underline">
+            Timetable
+          </Link>
           <span className="mx-2 text-ink/70">·</span>
-          <Link to="/app/homework" className="text-ink underline">Homework</Link>
+          <Link to="/app/homework" className="text-ink underline">
+            Homework
+          </Link>
           <span className="mx-2 text-ink/70">·</span>
-          <Link to="/app/cumulative" className="text-ink underline">GES cumulative</Link>
+          <Link to="/app/announcements" className="text-ink underline">
+            Announcements
+          </Link>
+          <span className="mx-2 text-ink/70">·</span>
+          <Link to="/app/cumulative" className="text-ink underline">
+            GES cumulative
+          </Link>
         </p>
       </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+        <div className="order-1 lg:order-2 lg:sticky lg:top-24">
+          <AnnouncementFeed limit={8} title="Announcements" />
+        </div>
+        <div className="order-2 space-y-6 lg:order-1">
       {kids.length === 0 ? (
         <Card title="No children linked">
           <p className="text-sm text-muted">Ask the accountant to enroll with this parent email so the records appear here.</p>
@@ -387,6 +404,8 @@ function ParentDesk() {
           );
         })
       )}
+        </div>
+      </div>
     </div>
   );
 }

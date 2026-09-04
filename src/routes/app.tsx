@@ -37,6 +37,7 @@ const NAV: {
     | "/app/report-cards"
     | "/app/cumulative"
     | "/app/tasks"
+    | "/app/announcements"
     | "/app/billing"
     | "/app/payments"
     | "/app/income"
@@ -58,6 +59,7 @@ const NAV: {
   { href: "/app/staff", label: "Staff", group: "Desk", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER"] },
   { href: "/app/students", label: "Students & parents", group: "Desk", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER", "PARENT"] },
   { href: "/app/account", label: "My profile", group: "Desk", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER", "SERVICE_OFFICER", "PARENT"] },
+  { href: "/app/announcements", label: "Announcements", group: "Desk", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "ACCOUNTANT", "TEACHER", "SERVICE_OFFICER", "PARENT"] },
   { href: "/app/academic", label: "Academic", group: "School", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN"] },
   { href: "/app/promote", label: "Promote", group: "School", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN"] },
   { href: "/app/timetable", label: "Timetable", group: "School", roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER", "PARENT"] },
