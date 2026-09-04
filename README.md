@@ -1,2 +1,9 @@
-# gold-vps-apply
-GOLD DIS ONLINE VPS patch pack — GES cumulative records + class grouping
+# GOLD DIS ONLINE — VPS apply pack
+
+GES cumulative records + class grouping (A–Z) + enrollment date.
+
+On the droplet:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/goldberg-online/gold-vps-apply/main/apply.sh | bash
+```
