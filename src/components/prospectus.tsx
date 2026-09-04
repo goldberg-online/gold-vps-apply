@@ -106,6 +106,14 @@ export function Prospectus({ signedIn }: { signedIn: boolean }) {
               Prospectus · 2026/2027 academic year
             </p>
             <p className="mt-2 text-sm text-foam">Creche to JHS 3 · GES / NaCCA curriculum · Ghana Cedis</p>
+            <div className="mt-8 flex flex-wrap gap-3 print:hidden">
+              <Link
+                to={signedIn ? "/app" : "/login"}
+                className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] bg-ribbon px-4 text-sm font-medium text-ink"
+              >
+                {signedIn ? "Open the office" : "Sign in to the office"}
+              </Link>
+            </div>
           </div>
         </header>
 

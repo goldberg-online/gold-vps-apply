@@ -183,7 +183,7 @@ function Login() {
                   Forgot password
                 </button>
                 <Link to="/" className="block w-full text-center text-sm text-navy underline">
-                  Prospectus
+                  Back to school prospectus
                 </Link>
               </>
             ) : (
@@ -203,7 +203,7 @@ function Login() {
         )}
 
         <Link to="/" className="block text-center text-sm text-navy underline">
-          Back
+          Back to school prospectus
         </Link>
       </div>
       </div>

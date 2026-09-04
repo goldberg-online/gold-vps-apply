@@ -15,6 +15,7 @@ FILES=(
   src/lib/academic-ops.ts
   src/lib/school.ts
   src/lib/announcements.ts
+  src/lib/auth/idle-logout.tsx
   src/components/cumulative-record.tsx
   src/components/student-typeahead.tsx
   src/components/announcement-feed.tsx
@@ -56,15 +57,18 @@ for f in "${FILES[@]}"; do
   echo "WROTE $f $(wc -c < "$dest")"
 done
 
-if [ "$n" -ne 34 ]; then
-  echo "expected 34 files, got $n"; exit 1
+if [ "$n" -ne 35 ]; then
+  echo "expected 35 files, got $n"; exit 1
 fi
 grep -q attachCumulativeCard "$ROOT/src/lib/school.ts" || { echo "school.ts did not land"; exit 1; }
 grep -q "Pupils by class" "$ROOT/src/routes/app/cumulative.tsx" || { echo "cumulative page did not land"; exit 1; }
 grep -q postAnnouncement "$ROOT/src/lib/announcements.ts" || { echo "announcements lib did not land"; exit 1; }
 grep -q 'href: "/app/announcements"' "$ROOT/src/routes/app.tsx" || { echo "announcements menu did not land"; exit 1; }
 grep -q "A Christian private school in Accra" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus did not land"; exit 1; }
-echo "OK 34 files under $ROOT"
+grep -q "Sign in to the office" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus sign-in CTA did not land"; exit 1; }
+grep -q 'return <Prospectus signedIn={!!user} />' "$ROOT/src/routes/index.tsx" || { echo "front page is not the school prospectus"; exit 1; }
+grep -q 'signOut("/")' "$ROOT/src/lib/auth/idle-logout.tsx" || { echo "idle logout did not land on prospectus"; exit 1; }
+echo "OK 35 files under $ROOT"
 
 echo
 echo "Building and restarting GOLD..."
