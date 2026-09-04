@@ -103,6 +103,7 @@ function FamiliesPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
+              if (mut.isPending) return;
               mut.mutate();
             }}
           >

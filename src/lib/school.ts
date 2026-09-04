@@ -679,6 +679,35 @@ const enrollSchema = z.object({
   enrolledOn: z.string().optional(),
 });
 
+function formatAdmission(n: number) {
+  return `DISST${String(n).padStart(2, "0")}`;
+}
+
+async function nextAdmissionNo(sql: Awaited<ReturnType<typeof getSql>>, schoolId: string) {
+  const rows = await sql.query<{ admission_no: string }>(
+    `select admission_no from students where school_id = $1`,
+    [schoolId],
+  );
+  const used = new Set(rows.map((r) => r.admission_no));
+  let max = 0;
+  for (const r of rows) {
+    const m = r.admission_no.match(/(\d+)$/);
+    if (!m) continue;
+    const v = parseInt(m[1], 10);
+    if (Number.isFinite(v) && v > max) max = v;
+  }
+  let n = max + 1;
+  while (used.has(formatAdmission(n))) n += 1;
+  return formatAdmission(n);
+}
+
+function isAdmissionClash(err: unknown) {
+  const e = err as { code?: string; message?: string };
+  if (e?.code === "23505") return true;
+  const msg = e?.message || String(err);
+  return /students_school_id_admission_no_key|duplicate key value.*admission_no/i.test(msg);
+}
+
 export const enrollStudent = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(enrollSchema)
@@ -687,48 +716,47 @@ export const enrollStudent = createServerFn({ method: "POST" })
     const me = await ensureStaff(sql, context.userId);
     if (!canEnroll(me.role)) throw new Error("Only Accountant or Super Admin can enroll");
     await ensureStudentColumns(sql);
-    const last = await sql.query<{ admission_no: string }>(
-      `select admission_no from students where school_id = $1 order by admission_no desc limit 1`,
-      [me.school_id],
-    );
-    let n = 1;
-    if (last[0]?.admission_no) {
-      const m = last[0].admission_no.match(/(\d+)$/);
-      if (m) n = parseInt(m[1], 10) + 1;
-    }
-    const admission = `DISST${String(n).padStart(2, "0")}`;
     const id = crypto.randomUUID();
     const { persistStudentPhoto } = await import("@/lib/student-photo");
     const photoUrl = await persistStudentPhoto(data.photoUrl);
     const enrolledOn = (data.enrolledOn || todayIso()).slice(0, 10);
-    await sql.query(
-      `insert into students (
-        id, school_id, admission_no, first_name, last_name, class_name,
-        gender, dob, phone, address, notes, parent_name, parent_phone, parent_email,
-        previous_school, nhis_number, photo_url, created_by, enrolled_on
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-      [
-        id,
-        me.school_id,
-        admission,
-        data.firstName.trim(),
-        data.lastName.trim(),
-        data.className,
-        data.gender || null,
-        data.dob || null,
-        data.phone || null,
-        data.address || null,
-        data.notes || null,
-        data.parentName || null,
-        data.parentPhone || null,
-        data.parentEmail || null,
-        data.previousSchool || null,
-        data.nhisNumber || null,
-        photoUrl,
-        me.user_id,
-        enrolledOn,
-      ],
-    );
+    let admission = await nextAdmissionNo(sql, me.school_id);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try {
+        await sql.query(
+          `insert into students (
+            id, school_id, admission_no, first_name, last_name, class_name,
+            gender, dob, phone, address, notes, parent_name, parent_phone, parent_email,
+            previous_school, nhis_number, photo_url, created_by, enrolled_on
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+          [
+            id,
+            me.school_id,
+            admission,
+            data.firstName.trim(),
+            data.lastName.trim(),
+            data.className,
+            data.gender || null,
+            data.dob || null,
+            data.phone || null,
+            data.address || null,
+            data.notes || null,
+            data.parentName || null,
+            data.parentPhone || null,
+            data.parentEmail || null,
+            data.previousSchool || null,
+            data.nhisNumber || null,
+            photoUrl,
+            me.user_id,
+            enrolledOn,
+          ],
+        );
+        break;
+      } catch (err) {
+        if (!isAdmissionClash(err) || attempt === 11) throw err;
+        admission = await nextAdmissionNo(sql, me.school_id);
+      }
+    }
     await attachCumulativeCard(sql, {
       schoolId: me.school_id,
       studentId: id,
