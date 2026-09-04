@@ -79,7 +79,8 @@
 
 @media print {
   header,
-  .print\:hidden {
+  .print\:hidden,
+  .prospectus-toolbar {
     display: none !important;
   }
   body,
@@ -96,5 +97,12 @@
   }
   .print-sheet {
     border-color: #0b5559 !important;
+    box-shadow: none !important;
+  }
+  .prospectus-cover {
+    min-height: auto !important;
+    break-after: page;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
