@@ -2211,23 +2211,69 @@ function requireSuper(role: StaffRole) {
 
 export const updateStudent = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(enrollSchema.extend({ id: z.string() }))
+  .validator(
+    enrollSchema.extend({
+      id: z.string(),
+      admissionNo: z.string().trim().min(2).max(32).optional(),
+      status: z.enum(["ACTIVE", "LEFT", "GRADUATED"]).optional(),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
-    if (!canEnroll(me.role)) throw new Error("Cannot edit students");
-    const current = await sql.query<{ photo_url: string | null }>(
-      `select photo_url from students where id = $1 and school_id = $2`,
+    if (!canEnroll(me.role)) throw new Error("Only Super Admin or Accountant can change student details");
+    await ensureStudentColumns(sql);
+    const current = await sql.query<{
+      photo_url: string | null;
+      parent_email: string | null;
+      parent_name: string | null;
+      admission_no: string;
+    }>(
+      `select photo_url, parent_email, parent_name, admission_no
+       from students where id = $1 and school_id = $2`,
       [data.id, me.school_id],
     );
     if (!current[0]) throw new Error("Student not found");
+
+    let admission = current[0].admission_no;
+    if (data.admissionNo) {
+      const next = data.admissionNo.replace(/\s+/g, "").toUpperCase();
+      if (next !== current[0].admission_no) {
+        const clash = await sql.query<{ id: string }>(
+          `select id from students where school_id = $1 and admission_no = $2 and id <> $3`,
+          [me.school_id, next, data.id],
+        );
+        if (clash[0]) throw new Error(`Admission number ${next} is already used`);
+        admission = next;
+      }
+    }
+
+    const parentEmail = (data.parentEmail || "").toLowerCase().trim() || null;
+    const oldEmail = (current[0].parent_email || "").toLowerCase().trim();
+    if (parentEmail && parentEmail !== oldEmail) {
+      const parentStaff = oldEmail
+        ? await sql.query<{ id: string; user_id: string }>(
+            `select id, user_id from staff where school_id = $1 and lower(email) = $2 and role = 'PARENT'`,
+            [me.school_id, oldEmail],
+          )
+        : [];
+      const taken = await sql.query<{ id: string }>(
+        `select id from "user" where lower(email) = $1`,
+        [parentEmail],
+      );
+      if (taken[0] && taken[0].id !== parentStaff[0]?.user_id) {
+        throw new Error("That parent email already has a login");
+      }
+    }
+
     const { persistStudentPhoto } = await import("@/lib/student-photo");
     const photoUrl = await persistStudentPhoto(data.photoUrl, current[0].photo_url);
     await sql.query(
       `update students set first_name=$1, last_name=$2, class_name=$3, gender=$4, dob=$5,
         phone=$6, address=$7, notes=$8, parent_name=$9, parent_phone=$10, parent_email=$11,
-        previous_school=$12, nhis_number=$13, photo_url=$14, enrolled_on=$15
-       where id=$16 and school_id=$17`,
+        previous_school=$12, nhis_number=$13, photo_url=$14, enrolled_on=$15,
+        admission_no=$16, status=$17
+       where id=$18 and school_id=$19`,
       [
         data.firstName.trim(),
         data.lastName.trim(),
@@ -2239,14 +2285,49 @@ export const updateStudent = createServerFn({ method: "POST" })
         data.notes || null,
         data.parentName || null,
         data.parentPhone || null,
-        data.parentEmail || null,
+        parentEmail,
         data.previousSchool || null,
         data.nhisNumber || null,
         photoUrl,
         (data.enrolledOn || todayIso()).slice(0, 10),
+        admission,
+        data.status || "ACTIVE",
         data.id,
         me.school_id,
       ],
+    );
+
+    if (parentEmail && oldEmail && parentEmail !== oldEmail) {
+      const parentStaff = await sql.query<{ id: string; user_id: string }>(
+        `select id, user_id from staff where school_id = $1 and lower(email) = $2 and role = 'PARENT'`,
+        [me.school_id, oldEmail],
+      );
+      if (parentStaff[0]) {
+        await sql.query(`update staff set email = $1 where id = $2`, [parentEmail, parentStaff[0].id]);
+        await sql.query(`update "user" set email = $1, "updatedAt" = now() where id = $2`, [
+          parentEmail,
+          parentStaff[0].user_id,
+        ]);
+      }
+    }
+    const loginEmail = parentEmail || oldEmail;
+    if (data.parentName && loginEmail) {
+      const parts = data.parentName.trim().split(/\s+/);
+      const first = parts[0] || "Parent";
+      const last = parts.slice(1).join(" ") || "Guardian";
+      await sql.query(
+        `update staff set first_name = $1, last_name = $2 where school_id = $3 and lower(email) = $4 and role = 'PARENT'`,
+        [first, last, me.school_id, loginEmail],
+      );
+    }
+
+    await writeAudit(
+      sql,
+      me,
+      "STUDENT_EDIT",
+      "student",
+      data.id,
+      `Updated ${data.firstName.trim()} ${data.lastName.trim()} · ${admission}`,
     );
     return { ok: true };
   });

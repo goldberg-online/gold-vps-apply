@@ -222,6 +222,7 @@ function FamiliesPage() {
         </Card>
       )}
       <Card title={`Families (${list.data?.length ?? 0})`} desc="Open a class, then a name. Every class list is A–Z.">
+        {list.isError ? <p className="text-sm text-bad">{(list.error as Error).message}</p> : null}
         <Field label="Find enrolled student">
           <Input
             value={find}
@@ -332,6 +333,7 @@ function FamilyEditor({
     nhis_number?: string | null;
     photo_url?: string | null;
     enrolled_on?: string | null;
+    status?: string | null;
   };
   canEdit: boolean;
   canDelete: boolean;
@@ -353,10 +355,37 @@ function FamilyEditor({
     nhisNumber: student.nhis_number ?? "",
     photoUrl: student.photo_url ?? "",
     enrolledOn: student.enrolled_on ?? "",
+    admissionNo: student.admission_no,
+    status: (student.status === "LEFT" || student.status === "GRADUATED" ? student.status : "ACTIVE") as
+      | "ACTIVE"
+      | "LEFT"
+      | "GRADUATED",
   });
   const [err, setErr] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: () => updateStudent({ data: { id: student.id, ...form } }),
+    mutationFn: () =>
+      updateStudent({
+        data: {
+          id: student.id,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          className: form.className,
+          gender: form.gender,
+          dob: form.dob,
+          phone: form.phone,
+          address: form.address,
+          notes: form.notes,
+          parentName: form.parentName,
+          parentPhone: form.parentPhone,
+          parentEmail: form.parentEmail,
+          previousSchool: form.previousSchool,
+          nhisNumber: form.nhisNumber,
+          photoUrl: form.photoUrl,
+          enrolledOn: form.enrolledOn,
+          admissionNo: form.admissionNo,
+          status: form.status,
+        },
+      }),
     onSuccess: onDone,
     onError: (e) => setErr((e as Error).message),
   });
@@ -368,7 +397,14 @@ function FamilyEditor({
 
   return (
     <div className="space-y-3 border-t border-line px-3 py-3">
-      <p className="text-xs uppercase tracking-wide text-muted">Student</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-navy">
+        {canEdit ? "Change student details" : "Student details"}
+      </p>
+      {canEdit ? (
+        <p className="text-xs text-muted">
+          Super Admin and Accountant can correct any field, including admission number and parent login email.
+        </p>
+      ) : null}
       <Field label="Student photo">
         <div className="flex items-center gap-3">
           <Avatar src={form.photoUrl || student.photo_url} name={`${form.firstName} ${form.lastName}`} />
@@ -390,6 +426,24 @@ function FamilyEditor({
         </div>
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Admission number">
+          <Input
+            disabled={!canEdit}
+            value={form.admissionNo}
+            onChange={(e) => setForm({ ...form, admissionNo: e.target.value })}
+          />
+        </Field>
+        <Field label="Status">
+          <Select
+            disabled={!canEdit}
+            value={form.status}
+            onChange={(e) => setForm({ ...form, status: e.target.value as "ACTIVE" | "LEFT" | "GRADUATED" })}
+          >
+            <option value="ACTIVE">On roll</option>
+            <option value="LEFT">Left school</option>
+            <option value="GRADUATED">Graduated</option>
+          </Select>
+        </Field>
         <Field label="First name">
           <Input disabled={!canEdit} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
         </Field>
@@ -398,9 +452,16 @@ function FamilyEditor({
         </Field>
         <Field label="Class">
           <Select disabled={!canEdit} value={form.className} onChange={(e) => setForm({ ...form, className: e.target.value })}>
-            {GHANA_CLASS_LEVELS.map((c) => (
+            {[...GHANA_CLASS_LEVELS].sort(sortAlpha).map((c) => (
               <option key={c}>{c}</option>
             ))}
+          </Select>
+        </Field>
+        <Field label="Gender">
+          <Select disabled={!canEdit} value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
+            <option value="">Select</option>
+            <option>Female</option>
+            <option>Male</option>
           </Select>
         </Field>
         <Field label="Date of birth">
@@ -408,6 +469,9 @@ function FamilyEditor({
         </Field>
         <Field label="Date of enrollment">
           <Input disabled={!canEdit} type="date" value={form.enrolledOn} onChange={(e) => setForm({ ...form, enrolledOn: e.target.value })} />
+        </Field>
+        <Field label="Student phone">
+          <Input disabled={!canEdit} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         </Field>
         <Field label="Previous school">
           <Input disabled={!canEdit} value={form.previousSchool} onChange={(e) => setForm({ ...form, previousSchool: e.target.value })} />
@@ -424,7 +488,7 @@ function FamilyEditor({
         <Field label="Parent phone">
           <Input disabled={!canEdit} value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
         </Field>
-        <Field label="Parent email">
+        <Field label="Parent email (login)">
           <Input disabled={!canEdit} value={form.parentEmail} onChange={(e) => setForm({ ...form, parentEmail: e.target.value })} />
         </Field>
         <Field label="Home address">
@@ -434,29 +498,32 @@ function FamilyEditor({
       <Field label="Notes">
         <Input disabled={!canEdit} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       </Field>
-      <StudentSchoolRecord studentId={student.id} />
       {err ? <p className="text-sm text-bad">{err}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        {canEdit ? (
-          <Button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
-            Save family
-          </Button>
-        ) : null}
-        {canDelete ? (
-          <Button
-            type="button"
-            variant="danger"
-            onClick={() => {
-              if (confirm(`Permanently delete ${student.first_name} ${student.last_name} and parent details?`)) {
-                del.mutate();
-              }
-            }}
-            disabled={del.isPending}
-          >
-            Permanently delete
-          </Button>
-        ) : null}
-      </div>
+      {save.isSuccess ? <p className="text-sm text-good">Saved. The student record is updated.</p> : null}
+      {canEdit || canDelete ? (
+        <div className="flex flex-wrap gap-2">
+          {canEdit ? (
+            <Button type="button" onClick={() => save.mutate()} disabled={save.isPending || !form.firstName.trim() || !form.lastName.trim()}>
+              {save.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          ) : null}
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                if (confirm(`Permanently delete ${student.first_name} ${student.last_name} and parent details?`)) {
+                  del.mutate();
+                }
+              }}
+              disabled={del.isPending}
+            >
+              Permanently delete
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <StudentSchoolRecord studentId={student.id} />
     </div>
   );
 }
