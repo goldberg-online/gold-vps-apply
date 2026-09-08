@@ -72,7 +72,7 @@ grep -q "Sign in to the office" "$ROOT/src/components/prospectus.tsx" || { echo 
 grep -q 'return <Prospectus signedIn={!!user} />' "$ROOT/src/routes/index.tsx" || { echo "front page is not the school prospectus"; exit 1; }
 grep -q 'signOut("/")' "$ROOT/src/lib/auth/idle-logout.tsx" || { echo "idle logout did not land on prospectus"; exit 1; }
 grep -q receipt-paid-mark "$ROOT/src/components/official-receipt.tsx" || { echo "paid watermark did not land"; exit 1; }
-grep -q 'Print receipt' "$ROOT/src/routes/app/services.tsx" || { echo "bus/feeding print did not land"; exit 1; }
+grep -q 'Print feeding' "$ROOT/src/routes/app/services.tsx" || { echo "bus/feeding print did not land"; exit 1; }
 echo "OK 38 files under $ROOT"
 
 echo

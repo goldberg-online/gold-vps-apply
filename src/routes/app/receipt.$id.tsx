@@ -1,14 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { getMe, getReceipt, listReceiptEvents, logReceiptPrint, sendPaymentSms } from "@/lib/school";
 import { num } from "@/lib/ghana";
 import { OfficialReceipt } from "@/components/official-receipt";
 import { Button } from "@/components/ui";
 
-export const Route = createFileRoute("/app/receipt/$id")({ component: ReceiptPage });
+export const Route = createFileRoute("/app/receipt/$id")({
+  component: ReceiptPage,
+  validateSearch: (search: Record<string, unknown>): { print?: boolean } => {
+    const v = search.print;
+    if (v === true || v === "1" || v === "true") return { print: true };
+    return {};
+  },
+});
 
 function ReceiptPage() {
   const { id } = Route.useParams();
+  const { print } = Route.useSearch();
+  const printed = useRef(false);
   const q = useQuery({ queryKey: ["receipt", id], queryFn: () => getReceipt({ data: { id } }) });
   const me = useQuery({ queryKey: ["me"], queryFn: () => getMe() });
   const ev = useQuery({ queryKey: ["receipt-ev", id], queryFn: () => listReceiptEvents({ data: { id } }) });
@@ -16,6 +26,17 @@ function ReceiptPage() {
     mutationFn: () => sendPaymentSms({ data: { id } }),
   });
   const r = q.data;
+
+  useEffect(() => {
+    if (!print || !r || printed.current) return;
+    printed.current = true;
+    const t = window.setTimeout(() => {
+      logReceiptPrint({ data: { id } }).catch(() => undefined);
+      window.print();
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [print, r, id]);
+
   if (q.isLoading) return <p className="text-sm text-muted">Loading receipt…</p>;
   if (!r) return <p className="text-sm text-bad">Receipt not found.</p>;
   const bal = Math.max(0, num(r.total) - num(r.paid));

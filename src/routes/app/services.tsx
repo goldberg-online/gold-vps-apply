@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Printer } from "lucide-react";
 import { collectService, deleteService, getMe, listServices, listStudents } from "@/lib/school";
 import { num, sortAlpha } from "@/lib/ghana";
 import { Button, Card, Field, Input, Money, Select } from "@/components/ui";
@@ -19,9 +20,10 @@ function ServicesPage() {
   const [amount, setAmount] = useState("");
   const [feedingAmount, setFeedingAmount] = useState("");
   const [busAmount, setBusAmount] = useState("");
+  const [printKind, setPrintKind] = useState<"ALL" | "FEEDING" | "BUS">("ALL");
   const [last, setLast] = useState<{ id: string; receiptNo: string; kind: string }[] | null>(null);
   const groups = useMemo(() => {
-    const rows = list.data ?? [];
+    const rows = (list.data ?? []).filter((r) => (printKind === "ALL" ? true : r.kind === printKind));
     const map = new Map<string, typeof rows>();
     for (const r of rows) {
       const k = r.class_name || "Unassigned";
@@ -35,7 +37,7 @@ function ServicesPage() {
         cls,
         items: items.slice().sort((a, b) => sortAlpha(a.student || "", b.student || "")),
       }));
-  }, [list.data]);
+  }, [list.data, printKind]);
   const [openCls, setOpenCls] = useState<string | null>(null);
   const mut = useMutation({
     mutationFn: async () => {
@@ -66,7 +68,7 @@ function ServicesPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-      <Card title="Bus & feeding collection" desc="Type a name — matching students appear. A receipt prints for every collection.">
+      <Card title="Bus & feeding collection" desc="Type a name. Collecting issues a numbered receipt you can print.">
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -108,34 +110,44 @@ function ServicesPage() {
         </form>
         {last && last.length > 0 ? (
           <div className="mt-4 space-y-2 rounded-[12px] border border-gold/30 bg-bg p-3">
-            <p className="text-sm">Receipt saved. Print with the school crest and PAID mark:</p>
+            <p className="text-sm font-medium text-navy">Print this receipt</p>
+            <p className="text-sm text-muted">Crest and PAID mark are on the paper.</p>
             <div className="flex flex-col gap-2">
               {last.map((r) => (
                 <Link
                   key={r.id}
                   to="/app/receipt/$id"
                   params={{ id: r.id }}
-                  className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-line bg-surface px-4 text-sm"
+                  search={{ print: true }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] bg-ribbon px-4 text-sm font-medium text-ink"
                 >
-                  Print {r.kind === "BUS" ? "bus" : "feeding"} · {r.receiptNo}
+                  <Printer className="h-4 w-4" />
+                  Print {r.kind === "BUS" ? "bus" : "feeding"} receipt
                 </Link>
               ))}
             </div>
           </div>
         ) : null}
       </Card>
-      <Card title="Today’s book" desc="Open a class. Names A–Z. Print the receipt for that child.">
+      <Card title="Print feeding & bus receipts" desc="Choose feeding or bus, open a class, then Print.">
+        <Field label="Receipts to print">
+          <Select value={printKind} onChange={(e) => setPrintKind(e.target.value as "ALL" | "FEEDING" | "BUS")}>
+            <option value="ALL">All receipts</option>
+            <option value="FEEDING">Feeding receipts only</option>
+            <option value="BUS">Bus receipts only</option>
+          </Select>
+        </Field>
         {groups.length === 0 ? (
-          <p className="text-sm text-muted">No collections yet.</p>
+          <p className="mt-3 text-sm text-muted">No collections yet for this option.</p>
         ) : (
-          <ul className="space-y-2 text-sm">
+          <ul className="mt-3 space-y-2 text-sm">
             {groups.map((g) => {
               const open = openCls === g.cls;
               return (
                 <li key={g.cls} className="rounded-[12px] border border-line">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between px-3 py-3 text-left"
+                    className="flex min-h-11 w-full items-center justify-between px-3 py-3 text-left"
                     onClick={() => setOpenCls(open ? null : g.cls)}
                   >
                     <span className="font-semibold text-navy">{g.cls}</span>
@@ -144,7 +156,7 @@ function ServicesPage() {
                   {open ? (
                     <ul className="border-t border-line px-3 py-2">
                       {g.items.map((r) => (
-                        <li key={r.id} className="flex justify-between gap-3 border-b border-line py-2 last:border-0">
+                        <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-3 last:border-0">
                           <span>
                             {r.kind === "BUS" ? "Bus" : "Feeding"} · {r.student || "Unassigned"}
                             <span className="mt-0.5 block font-mono text-xs text-muted">{r.receipt_no}</span>
@@ -152,14 +164,16 @@ function ServicesPage() {
                               Entered by {r.recorded_name || "staff"}
                             </span>
                           </span>
-                          <span className="flex flex-col items-end gap-1">
+                          <span className="flex flex-wrap items-center gap-2">
                             <Money n={num(r.amount)} kind="in" />
                             <Link
                               to="/app/receipt/$id"
                               params={{ id: r.id }}
-                              className="text-xs text-navy underline"
+                              search={{ print: true }}
+                              className="inline-flex min-h-11 items-center gap-2 rounded-[8px] border border-line bg-surface px-3 text-sm text-navy"
                             >
-                              Print receipt
+                              <Printer className="h-4 w-4" />
+                              Print {r.kind === "BUS" ? "bus" : "feeding"}
                             </Link>
                             {isSuper ? (
                               <button
