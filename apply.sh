@@ -1,8 +1,8 @@
 #!/bin/bash
-# GOLD VPS apply pack 20260908-r7
+# GOLD VPS apply pack 20260908-r8
 # Do not put receipt.$id.tsx in an unquoted bash array — set -u aborts on $id.
 set -euo pipefail
-echo "GOLD apply pack 20260908-r7"
+echo "GOLD apply pack 20260908-r8"
 
 ROOT=/var/www/gold
 test -f "$ROOT/package.json" || { echo "Need $ROOT — are you on the DIS VPS?"; exit 1; }
@@ -80,6 +80,9 @@ grep -q loginErrorMessage "$ROOT/src/routes/login.tsx" || { echo "phone login pa
 grep -q isScannerUA "$ROOT/server/shield-core.ts" || { echo "site shield did not land"; exit 1; }
 grep -q DIS-SHIELD "$ROOT/server/middleware/00-shield.ts" "$ROOT/server/shield-core.ts" 2>/dev/null || true
 grep -q 'noai, noimageai' "$ROOT/src/routes/__root.tsx" || { echo "noindex robots meta did not land"; exit 1; }
+grep -q ui-gallery "$ROOT/src/routes/designs.tsx" && { echo "designs still imports missing gallery"; exit 1; }
+grep -q receipt-gallery "$ROOT/src/routes/looks.tsx" && { echo "looks still imports missing gallery"; exit 1; }
+grep -q system-prospectus "$ROOT/src/routes/online.tsx" && { echo "online still imports missing gallery"; exit 1; }
 echo "OK $n files under $ROOT"
 
 echo
