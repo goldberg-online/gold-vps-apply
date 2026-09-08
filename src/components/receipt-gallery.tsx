@@ -26,6 +26,14 @@ function Crest({ className }: { className: string }) {
   );
 }
 
+function PaidMark() {
+  return (
+    <div className="receipt-paid-mark" aria-hidden>
+      <span>Paid</span>
+    </div>
+  );
+}
+
 function Line({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   return (
     <div className="flex justify-between gap-4 text-sm">
@@ -51,6 +59,7 @@ function Look1() {
       <LookLabel n="Look 1" title="Office slip" note="Crest sits in the middle of the paper, faded, so type stays readable." />
       <article className="relative mx-auto max-w-md overflow-hidden rounded-[16px] border border-line bg-surface p-6 shadow-[0_8px_28px_rgba(11,85,89,0.12)]">
         <Crest className="left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-20" />
+        <PaidMark />
         <div className="relative z-10">
           <header className="border-b border-line pb-4 text-center">
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-navy">DIS ONLINE</p>
@@ -82,12 +91,16 @@ function Look2() {
       <LookLabel n="Look 2" title="Formal A5 sheet" note="Large crest watermark behind the whole page — like a printed school receipt." />
       <article className="relative mx-auto max-w-xl overflow-hidden rounded-[4px] border border-navy/25 bg-surface px-8 py-8 shadow-[0_8px_28px_rgba(11,85,89,0.12)]">
         <Crest className="left-1/2 top-8 h-72 w-72 -translate-x-1/2 rounded-full opacity-[0.16]" />
+        <PaidMark />
         <div className="relative z-10">
           <div className="flex items-start justify-between gap-4 border-b-2 border-navy pb-4">
-            <div>
+            <div className="flex items-start gap-3">
+              <img src="/school-crest.jpg" alt="" className="h-16 w-16 shrink-0 rounded-full border-2 border-navy/30 object-cover" />
+              <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-navy">Official receipt</p>
               <h3 className="mt-1 text-xl font-semibold uppercase leading-tight text-navy">Doorbell International School</h3>
               <p className="mt-1 text-sm text-muted">Christ is our light · Accra, Ghana</p>
+              </div>
             </div>
             <div className="text-right">
               <p className="font-mono text-sm text-navy">{R.no}</p>
@@ -136,6 +149,7 @@ function Look3() {
         </div>
         <div className="relative p-5">
           <Crest className="bottom-3 right-3 h-24 w-24 rounded-full opacity-15" />
+          <PaidMark />
           <dl className="relative z-10 space-y-2">
             <Line k="Student" v={R.student} />
             <Line k="ID" v={R.id} />
@@ -166,6 +180,7 @@ function Look4() {
           }}
           aria-hidden
         />
+        <PaidMark />
         <div className="relative z-10">
           <header className="flex items-center gap-3 border-b border-navy/20 pb-3">
             <img src="/school-crest.jpg" alt="" className="h-12 w-12 rounded-full border border-navy/20 object-cover" />

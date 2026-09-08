@@ -22,6 +22,7 @@ FILES=(
   src/components/prospectus.tsx
   src/components/system-prospectus.tsx
   src/components/receipt-gallery.tsx
+  src/components/official-receipt.tsx
   src/routes/app/cumulative.tsx
   src/routes/app/students.tsx
   src/routes/app/academic.tsx
@@ -35,6 +36,7 @@ FILES=(
   src/routes/app/services.tsx
   src/routes/app/homework.tsx
   src/routes/app/promote.tsx
+  src/routes/app/receipt.$id.tsx
   src/routes/index.tsx
   src/routes/looks.tsx
   src/routes/login.tsx
@@ -44,6 +46,7 @@ FILES=(
   migrations/0016_cumulative.sql
   migrations/0017_cumulative_records.sql
   migrations/0018_announcements.sql
+  migrations/0019_service_receipts.sql
 )
 
 n=0
@@ -57,8 +60,8 @@ for f in "${FILES[@]}"; do
   echo "WROTE $f $(wc -c < "$dest")"
 done
 
-if [ "$n" -ne 35 ]; then
-  echo "expected 35 files, got $n"; exit 1
+if [ "$n" -ne 38 ]; then
+  echo "expected 38 files, got $n"; exit 1
 fi
 grep -q attachCumulativeCard "$ROOT/src/lib/school.ts" || { echo "school.ts did not land"; exit 1; }
 grep -q "Pupils by class" "$ROOT/src/routes/app/cumulative.tsx" || { echo "cumulative page did not land"; exit 1; }
@@ -68,7 +71,9 @@ grep -q "A Christian private school in Accra" "$ROOT/src/components/prospectus.t
 grep -q "Sign in to the office" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus sign-in CTA did not land"; exit 1; }
 grep -q 'return <Prospectus signedIn={!!user} />' "$ROOT/src/routes/index.tsx" || { echo "front page is not the school prospectus"; exit 1; }
 grep -q 'signOut("/")' "$ROOT/src/lib/auth/idle-logout.tsx" || { echo "idle logout did not land on prospectus"; exit 1; }
-echo "OK 35 files under $ROOT"
+grep -q receipt-paid-mark "$ROOT/src/components/official-receipt.tsx" || { echo "paid watermark did not land"; exit 1; }
+grep -q 'Print receipt' "$ROOT/src/routes/app/services.tsx" || { echo "bus/feeding print did not land"; exit 1; }
+echo "OK 38 files under $ROOT"
 
 echo
 echo "Building and restarting GOLD..."

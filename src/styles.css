@@ -70,6 +70,33 @@
   color: var(--color-expense) !important;
 }
 
+.receipt-paid-mark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.receipt-paid-mark span {
+  transform: rotate(-28deg);
+  font-size: clamp(2.5rem, 12vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-income) 22%, transparent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.receipt-paid-mark span.is-void {
+  color: color-mix(in srgb, var(--color-expense) 28%, transparent);
+}
+.receipt-sheet {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
@@ -104,5 +131,10 @@
     break-after: page;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  .receipt-sheet {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
   }
 }

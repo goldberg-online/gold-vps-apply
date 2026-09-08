@@ -382,10 +382,15 @@ function ParentDesk() {
                     <p className="mt-2 text-sm text-muted">None yet.</p>
                   ) : (
                     <ul className="mt-2 space-y-1 text-sm">
-                      {kidSvc.slice(0, 8).map((s, i) => (
-                        <li key={`${s.kind}-${s.collected_at}-${i}`} className="flex justify-between gap-2">
+                      {kidSvc.slice(0, 8).map((s) => (
+                        <li key={s.id} className="flex justify-between gap-2">
                           <span>
-                            {s.kind === "BUS" ? "Bus" : "Feeding"} · {s.collected_at.slice(0, 10)}
+                            <Link to="/app/receipt/$id" params={{ id: s.id }} className="font-mono text-navy underline">
+                              {s.receipt_no}
+                            </Link>
+                            <span className="block text-xs text-muted">
+                              {s.kind === "BUS" ? "Bus" : "Feeding"} · {s.collected_at.slice(0, 10)}
+                            </span>
                           </span>
                           <Money n={num(s.amount)} kind="in" />
                         </li>

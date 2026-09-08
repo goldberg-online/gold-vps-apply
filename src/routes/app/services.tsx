@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { collectService, deleteService, getMe, listServices, listStudents } from "@/lib/school";
-import { formatGhs, num, sortAlpha } from "@/lib/ghana";
+import { num, sortAlpha } from "@/lib/ghana";
 import { Button, Card, Field, Input, Money, Select } from "@/components/ui";
 import { StudentTypeahead } from "@/components/student-typeahead";
 
@@ -19,6 +19,7 @@ function ServicesPage() {
   const [amount, setAmount] = useState("");
   const [feedingAmount, setFeedingAmount] = useState("");
   const [busAmount, setBusAmount] = useState("");
+  const [last, setLast] = useState<{ id: string; receiptNo: string; kind: string }[] | null>(null);
   const groups = useMemo(() => {
     const rows = list.data ?? [];
     const map = new Map<string, typeof rows>();
@@ -40,29 +41,32 @@ function ServicesPage() {
     mutationFn: async () => {
       const sid = studentId || undefined;
       if (kind === "BOTH") {
-        await collectService({
-          data: { kind: "FEEDING", studentId: sid, amount: parseFloat(feedingAmount) },
-        });
         return collectService({
-          data: { kind: "BUS", studentId: sid, amount: parseFloat(busAmount) },
+          data: {
+            kind: "BOTH",
+            studentId: sid,
+            feedingAmount: parseFloat(feedingAmount),
+            busAmount: parseFloat(busAmount),
+          },
         });
       }
       return collectService({
         data: { kind, studentId: sid, amount: parseFloat(amount) },
       });
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["svc"] });
       qc.invalidateQueries({ queryKey: ["dash"] });
       setAmount("");
       setFeedingAmount("");
       setBusAmount("");
+      setLast(res.receipts ?? []);
     },
   });
 
   return (
     <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-      <Card title="Bus & feeding collection" desc="Type a name — matching students appear.">
+      <Card title="Bus & feeding collection" desc="Type a name — matching students appear. A receipt prints for every collection.">
         <form
           className="space-y-3"
           onSubmit={(e) => {
@@ -99,11 +103,28 @@ function ServicesPage() {
           )}
           {mut.isError ? <p className="text-sm text-bad">{(mut.error as Error).message}</p> : null}
           <Button className="w-full" disabled={mut.isPending}>
-            Collect
+            Collect and issue receipt
           </Button>
         </form>
+        {last && last.length > 0 ? (
+          <div className="mt-4 space-y-2 rounded-[12px] border border-gold/30 bg-bg p-3">
+            <p className="text-sm">Receipt saved. Print with the school crest and PAID mark:</p>
+            <div className="flex flex-col gap-2">
+              {last.map((r) => (
+                <Link
+                  key={r.id}
+                  to="/app/receipt/$id"
+                  params={{ id: r.id }}
+                  className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-line bg-surface px-4 text-sm"
+                >
+                  Print {r.kind === "BUS" ? "bus" : "feeding"} · {r.receiptNo}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Card>
-      <Card title="Today’s book" desc="Open a class. Names A–Z.">
+      <Card title="Today’s book" desc="Open a class. Names A–Z. Print the receipt for that child.">
         {groups.length === 0 ? (
           <p className="text-sm text-muted">No collections yet.</p>
         ) : (
@@ -126,12 +147,20 @@ function ServicesPage() {
                         <li key={r.id} className="flex justify-between gap-3 border-b border-line py-2 last:border-0">
                           <span>
                             {r.kind === "BUS" ? "Bus" : "Feeding"} · {r.student || "Unassigned"}
+                            <span className="mt-0.5 block font-mono text-xs text-muted">{r.receipt_no}</span>
                             <span className="mt-0.5 block text-xs text-muted">
                               Entered by {r.recorded_name || "staff"}
                             </span>
                           </span>
-                          <span className="flex items-center gap-3">
+                          <span className="flex flex-col items-end gap-1">
                             <Money n={num(r.amount)} kind="in" />
+                            <Link
+                              to="/app/receipt/$id"
+                              params={{ id: r.id }}
+                              className="text-xs text-navy underline"
+                            >
+                              Print receipt
+                            </Link>
                             {isSuper ? (
                               <button
                                 type="button"

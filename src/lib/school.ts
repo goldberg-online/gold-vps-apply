@@ -186,6 +186,19 @@ async function ensureStudentColumns(sql: SqlClient) {
 
 type SqlClient = Awaited<ReturnType<typeof getSql>>;
 
+function issueReceiptNo(tag: "RCP" | "SVC") {
+  return `DIS-${tag}-${Date.now().toString().slice(-8)}${Math.floor(100 + Math.random() * 900)}`;
+}
+
+async function ensureServiceReceipts(sql: SqlClient) {
+  await sql.query(`alter table service_collections add column if not exists receipt_no text`);
+  await sql.query(
+    `update service_collections
+     set receipt_no = 'DIS-SVC-' || upper(substr(replace(id, '-', ''), 1, 11))
+     where receipt_no is null or btrim(receipt_no) = ''`,
+  );
+}
+
 async function postDouble(
   sql: SqlClient,
   args: {
@@ -534,6 +547,7 @@ export const getParentDesk = createServerFn({ method: "GET" })
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
     if (me.role !== "PARENT") throw new Error("Parent desk only");
+    await ensureServiceReceipts(sql);
     const email = (me.email || "").toLowerCase();
     const kids = await sql.query<{
       id: string;
@@ -593,13 +607,16 @@ export const getParentDesk = createServerFn({ method: "GET" })
       [me.school_id, email],
     );
     const services = await sql.query<{
+      id: string;
       student_id: string;
       kind: string;
       amount: string;
       collected_at: string;
       recorded_name: string | null;
+      receipt_no: string;
     }>(
-      `select c.student_id, c.kind, c.amount::text, c.collected_at::text, c.recorded_name
+      `select c.id, c.student_id, c.kind, c.amount::text, c.collected_at::text, c.recorded_name,
+              coalesce(c.receipt_no, c.id) as receipt_no
        from service_collections c
        join students s on s.id = c.student_id
        where c.school_id = $1 and lower(coalesce(s.parent_email,'')) = $2
@@ -1054,7 +1071,7 @@ export const recordPayment = createServerFn({ method: "POST" })
     if (!bill[0]) throw new Error("Billing not found");
     const remaining = num(bill[0].total) - num(bill[0].paid);
     if (data.amount > remaining + 0.001) throw new Error("Amount exceeds remaining balance");
-    const receiptNo = `DIS-RCP-${Date.now().toString().slice(-8)}${Math.floor(100 + Math.random() * 900)}`;
+    const receiptNo = issueReceiptNo("RCP");
     const id = crypto.randomUUID();
     await sql.query(
       `insert into payments (id, school_id, billing_id, amount, method, receipt_no, recorded_by, status)
@@ -1117,14 +1134,70 @@ export const getReceipt = createServerFn({ method: "POST" })
       [data.id, me.school_id],
     );
     const rec = rows[0] ?? null;
-    if (!rec) return null;
-    if (!canFinance(me.role)) {
-      if (me.role !== "PARENT") throw new Error("Finance access required");
-      if (!rec.parent_email || rec.parent_email.toLowerCase() !== me.email.toLowerCase()) {
+    if (rec) {
+      if (!canFinance(me.role)) {
+        if (me.role !== "PARENT") throw new Error("Finance access required");
+        if (!rec.parent_email || rec.parent_email.toLowerCase() !== me.email.toLowerCase()) {
+          throw new Error("You can only view receipts for your own child");
+        }
+      }
+      return { ...rec, cashier: null as string | null, source: "FEE" as const };
+    }
+
+    await ensureServiceReceipts(sql);
+    const svc = await sql.query<{
+      id: string;
+      receipt_no: string;
+      amount: string;
+      paid_at: string;
+      term: string | null;
+      kind: string;
+      student: string;
+      admission_no: string;
+      class_name: string;
+      parent_email: string | null;
+      recorded_name: string | null;
+    }>(
+      `select c.id, coalesce(c.receipt_no, c.id) as receipt_no, c.amount::text, c.collected_at::text as paid_at,
+              c.term, c.kind,
+              case when s.id is null then 'Unassigned' else s.first_name || ' ' || s.last_name end as student,
+              coalesce(s.admission_no, '—') as admission_no,
+              coalesce(s.class_name, '—') as class_name,
+              s.parent_email,
+              c.recorded_name
+       from service_collections c
+       left join students s on s.id = c.student_id
+       where c.id = $1 and c.school_id = $2`,
+      [data.id, me.school_id],
+    );
+    const row = svc[0];
+    if (!row) return null;
+    if (!canServices(me.role) && !canFinance(me.role)) {
+      if (me.role !== "PARENT") throw new Error("You cannot open this receipt");
+      if (!row.parent_email || row.parent_email.toLowerCase() !== me.email.toLowerCase()) {
         throw new Error("You can only view receipts for your own child");
       }
     }
-    return rec;
+    return {
+      id: row.id,
+      receipt_no: row.receipt_no,
+      amount: row.amount,
+      method: "CASH",
+      paid_at: row.paid_at,
+      status: "POSTED",
+      void_reason: null as string | null,
+      invoice_no: "SVC",
+      term: row.term || "",
+      description: row.kind === "BUS" ? "Bus fare" : "Feeding",
+      total: row.amount,
+      paid: row.amount,
+      student: row.student,
+      admission_no: row.admission_no,
+      class_name: row.class_name,
+      parent_email: row.parent_email,
+      cashier: row.recorded_name,
+      source: "SERVICE" as const,
+    };
   });
 
 export const sendPaymentSms = createServerFn({ method: "POST" })
@@ -1357,6 +1430,7 @@ export const collectService = createServerFn({ method: "POST" })
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
     if (!canServices(me.role)) throw new Error("Service desk access required");
+    await ensureServiceReceipts(sql);
     const term = termFromDate(new Date().toISOString().slice(0, 10));
     const officer = `${me.first_name} ${me.last_name}`.trim();
     const lines: { kind: "BUS" | "FEEDING"; amount: number }[] = [];
@@ -1374,11 +1448,13 @@ export const collectService = createServerFn({ method: "POST" })
     }
 
     const ids: string[] = [];
+    const receipts: { id: string; receiptNo: string; kind: "BUS" | "FEEDING" }[] = [];
     for (const line of lines) {
       const id = crypto.randomUUID();
+      const receiptNo = issueReceiptNo("SVC");
       await sql.query(
-        `insert into service_collections (id, school_id, kind, student_id, amount, notes, recorded_by, recorded_name, term)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `insert into service_collections (id, school_id, kind, student_id, amount, notes, recorded_by, recorded_name, term, receipt_no)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [
           id,
           me.school_id,
@@ -1389,6 +1465,7 @@ export const collectService = createServerFn({ method: "POST" })
           me.user_id,
           officer,
           term,
+          receiptNo,
         ],
       );
       await postDouble(sql, {
@@ -1397,14 +1474,16 @@ export const collectService = createServerFn({ method: "POST" })
         term,
         refType: "SERVICE",
         refId: id,
-        memo: line.kind,
+        memo: `${line.kind} ${receiptNo}`,
         userId: me.user_id,
         debitAccount: "CASH",
         creditAccount: line.kind === "BUS" ? "BUS_INCOME" : "FEEDING_INCOME",
         amount: line.amount,
       });
-      await writeAudit(sql, me, "SERVICE", "service", id, `${line.kind} · ${line.amount} · by ${officer}`);
+      await logReceipt(sql, me.school_id, id, "ISSUED", me.user_id, receiptNo);
+      await writeAudit(sql, me, "SERVICE", "service", id, `${line.kind} · ${receiptNo} · ${line.amount} · by ${officer}`);
       ids.push(id);
+      receipts.push({ id, receiptNo, kind: line.kind });
     }
 
     let sms: { ok: boolean; mocked?: boolean; error?: string; provider?: string } = {
@@ -1427,7 +1506,7 @@ export const collectService = createServerFn({ method: "POST" })
           receiptText({
             studentName: st[0].student,
             amount: total,
-            receiptNo: kindLabel,
+            receiptNo: receipts.map((r) => r.receiptNo).join(", "),
             balance: 0,
             kind: kindLabel,
           }),
@@ -1438,7 +1517,7 @@ export const collectService = createServerFn({ method: "POST" })
         }
       }
     }
-    return { ok: true, sms, n: lines.length };
+    return { ok: true, sms, n: lines.length, receipts };
   });
 
 export const listServices = createServerFn({ method: "GET" })
@@ -1447,6 +1526,7 @@ export const listServices = createServerFn({ method: "GET" })
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
     if (!canServices(me.role)) throw new Error("Service desk access required");
+    await ensureServiceReceipts(sql);
     return sql.query<{
       id: string;
       kind: string;
@@ -1456,11 +1536,13 @@ export const listServices = createServerFn({ method: "GET" })
       student: string | null;
       recorded_name: string | null;
       class_name: string | null;
+      receipt_no: string;
     }>(
       `select c.id, c.kind, c.amount::text, c.notes, c.collected_at::text,
               case when s.id is null then null else s.first_name || ' ' || s.last_name end as student,
               coalesce(c.recorded_name, nullif(trim(st.first_name || ' ' || st.last_name), '')) as recorded_name,
-              s.class_name
+              s.class_name,
+              coalesce(c.receipt_no, c.id) as receipt_no
        from service_collections c
        left join students s on s.id = c.student_id
        left join staff st on st.user_id = c.recorded_by
@@ -2169,8 +2251,17 @@ export const getStudentRecord = createServerFn({ method: "POST" })
        order by day desc limit 40`,
       [me.school_id, data.studentId],
     );
-    const services = await sql.query<{ kind: string; amount: string; collected_at: string; recorded_name: string | null }>(
-      `select kind, amount::text, collected_at::text, recorded_name
+    await ensureServiceReceipts(sql);
+    const services = await sql.query<{
+      id: string;
+      kind: string;
+      amount: string;
+      collected_at: string;
+      recorded_name: string | null;
+      receipt_no: string;
+    }>(
+      `select id, kind, amount::text, collected_at::text, recorded_name,
+              coalesce(receipt_no, id) as receipt_no
        from service_collections where school_id = $1 and student_id = $2
        order by collected_at desc limit 40`,
       [me.school_id, data.studentId],
@@ -3125,7 +3216,9 @@ export const logReceiptPrint = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
-    if (!canFinance(me.role) && me.role !== "PARENT") throw new Error("Finance access required");
+    if (!canFinance(me.role) && !canServices(me.role) && me.role !== "PARENT") {
+      throw new Error("Finance access required");
+    }
     await logReceipt(sql, me.school_id, data.id, "REPRINTED", me.user_id);
     return { ok: true };
   });
@@ -3136,7 +3229,9 @@ export const listReceiptEvents = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
-    if (!canFinance(me.role) && me.role !== "PARENT") throw new Error("Finance access required");
+    if (!canFinance(me.role) && !canServices(me.role) && me.role !== "PARENT") {
+      throw new Error("Finance access required");
+    }
     return sql.query<{ id: string; action: string; reason: string | null; created_at: string }>(
       `select id, action, reason, created_at::text
        from receipt_events where school_id = $1 and payment_id = $2

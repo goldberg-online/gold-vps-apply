@@ -602,11 +602,16 @@ function StudentSchoolRecord({ studentId }: { studentId: string }) {
         <p className="text-sm text-muted">No bus or feeding payments yet.</p>
       ) : (
         <ul className="space-y-1 text-sm">
-          {services.map((s, i) => (
-            <li key={`${s.kind}-${s.collected_at}-${i}`} className="flex justify-between gap-2">
+          {services.map((s) => (
+            <li key={s.id} className="flex justify-between gap-2">
               <span>
-                {s.kind === "BUS" ? "Bus" : "Feeding"} · {String(s.collected_at).slice(0, 10)}
-                {s.recorded_name ? ` · ${s.recorded_name}` : ""}
+                <Link to="/app/receipt/$id" params={{ id: s.id }} className="font-mono text-navy underline">
+                  {s.receipt_no}
+                </Link>
+                <span className="mt-0.5 block text-xs text-muted">
+                  {s.kind === "BUS" ? "Bus" : "Feeding"} · {String(s.collected_at).slice(0, 10)}
+                  {s.recorded_name ? ` · ${s.recorded_name}` : ""}
+                </span>
               </span>
               <Money n={num(s.amount)} kind="in" />
             </li>
