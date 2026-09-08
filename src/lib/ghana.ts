@@ -156,6 +156,69 @@ export function nextClass(name: string): { next: string; graduated: boolean } {
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
 
+/** Labels on the DIS feeding/bus paper sheet. */
+export const WEEKDAY_SHORT = ["MON", "TUE", "WED", "THUR", "FRI"] as const;
+
+export function mondayOf(iso?: string): string {
+  const src = (iso || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const [y, m, d] = src.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12, 0, 0));
+  const dow = dt.getUTCDay();
+  const shift = dow === 0 ? -6 : 1 - dow;
+  dt.setUTCDate(dt.getUTCDate() + shift);
+  return dt.toISOString().slice(0, 10);
+}
+
+export function weekDayIsos(monday: string): string[] {
+  const start = mondayOf(monday);
+  const [y, m, d] = start.split("-").map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < 5; i += 1) {
+    const dt = new Date(Date.UTC(y, m - 1, d + i, 12, 0, 0));
+    out.push(dt.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+export function shiftMonday(monday: string, weeks: number): string {
+  const start = mondayOf(monday);
+  const [y, m, d] = start.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + weeks * 7, 12, 0, 0));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Week number within the GES term (1st = Sep, 2nd = Jan, 3rd = May). */
+export function termWeekNo(iso: string): number {
+  const stamp = (iso || "").slice(0, 10);
+  const term = termFromDate(stamp);
+  const y = Number(stamp.slice(0, 4)) || new Date().getFullYear();
+  const month = Number(stamp.slice(5, 7)) || 1;
+  let start: string;
+  if (term === "1st Term") start = `${month >= 9 ? y : y - 1}-09-01`;
+  else if (term === "3rd Term") start = `${y}-05-01`;
+  else start = `${y}-01-07`;
+  const a = Date.parse(`${mondayOf(start)}T12:00:00Z`);
+  const b = Date.parse(`${mondayOf(stamp)}T12:00:00Z`);
+  return Math.max(1, Math.round((b - a) / 86400000 / 7) + 1);
+}
+
+export function formatDayShort(iso: string): string {
+  const [y, m, d] = (iso || "").split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+/** School order (Creche → JHS 3), then A–Z for anything else. */
+export function sortClass(a: string, b: string) {
+  const ia = (GHANA_CLASS_LEVELS as readonly string[]).indexOf(a);
+  const ib = (GHANA_CLASS_LEVELS as readonly string[]).indexOf(b);
+  if (ia >= 0 && ib >= 0) return ia - ib;
+  if (ia >= 0) return -1;
+  if (ib >= 0) return 1;
+  return sortAlpha(a, b);
+}
+
 export const PERIODS = [
   { n: 1, start: "08:00", end: "08:40" },
   { n: 2, start: "08:40", end: "09:20" },

@@ -12,6 +12,10 @@ import {
   num,
   termFromDate,
   academicYearRange,
+  mondayOf,
+  weekDayIsos,
+  sortClass,
+  sortAlpha,
   type StaffRole,
   ROLE_LABEL,
 } from "@/lib/ghana";
@@ -197,7 +201,119 @@ async function ensureServiceReceipts(sql: SqlClient) {
      set receipt_no = 'DIS-SVC-' || upper(substr(replace(id, '-', ''), 1, 11))
      where receipt_no is null or btrim(receipt_no) = ''`,
   );
+  await sql.query(`alter table service_collections add column if not exists collected_on date`);
+  await sql.query(
+    `update service_collections set collected_on = collected_at::date where collected_on is null`,
+  );
+  await sql.query(`
+    create table if not exists service_enrollments (
+      id text primary key,
+      school_id text not null references schools(id),
+      student_id text not null references students(id),
+      on_feeding boolean not null default false,
+      on_bus boolean not null default false,
+      feeding_rate numeric not null default 0,
+      bus_rate numeric not null default 0,
+      active boolean not null default true,
+      enrolled_on date,
+      enrolled_by text,
+      unique (school_id, student_id)
+    )
+  `);
+  const missing = await sql.query<{
+    school_id: string;
+    student_id: string;
+    feeding: string | null;
+    bus: string | null;
+    first_day: string | null;
+  }>(
+    `select c.school_id, c.student_id,
+            max(case when c.kind = 'FEEDING' then c.amount end)::text as feeding,
+            max(case when c.kind = 'BUS' then c.amount end)::text as bus,
+            min(c.collected_on)::text as first_day
+     from service_collections c
+     where c.student_id is not null
+       and not exists (
+         select 1 from service_enrollments e
+         where e.school_id = c.school_id and e.student_id = c.student_id
+       )
+     group by c.school_id, c.student_id`,
+  );
+  for (const r of missing) {
+    await sql.query(
+      `insert into service_enrollments (
+         id, school_id, student_id, on_feeding, on_bus, feeding_rate, bus_rate, active, enrolled_on
+       ) values ($1,$2,$3,$4,$5,$6,$7,true,$8)`,
+      [
+        crypto.randomUUID(),
+        r.school_id,
+        r.student_id,
+        Boolean(r.feeding),
+        Boolean(r.bus),
+        num(r.feeding),
+        num(r.bus),
+        r.first_day,
+      ],
+    );
+  }
 }
+
+async function upsertServiceEnrollment(
+  sql: SqlClient,
+  args: {
+    schoolId: string;
+    studentId: string;
+    onFeeding?: boolean;
+    onBus?: boolean;
+    feedingRate?: number;
+    busRate?: number;
+    enrolledBy?: string;
+  },
+) {
+  const existing = await sql.query<{
+    id: string;
+    on_feeding: boolean;
+    on_bus: boolean;
+    feeding_rate: string;
+    bus_rate: string;
+  }>(
+    `select id, on_feeding, on_bus, feeding_rate::text, bus_rate::text
+     from service_enrollments where school_id = $1 and student_id = $2`,
+    [args.schoolId, args.studentId],
+  );
+  const onF = args.onFeeding ?? Boolean(existing[0]?.on_feeding);
+  const onB = args.onBus ?? Boolean(existing[0]?.on_bus);
+  const fRate = args.feedingRate ?? num(existing[0]?.feeding_rate);
+  const bRate = args.busRate ?? num(existing[0]?.bus_rate);
+  const active = onF || onB;
+  if (existing[0]) {
+    await sql.query(
+      `update service_enrollments
+       set on_feeding = $1, on_bus = $2, feeding_rate = $3, bus_rate = $4, active = $5
+       where id = $6`,
+      [onF, onB, fRate, bRate, active, existing[0].id],
+    );
+    return;
+  }
+  await sql.query(
+    `insert into service_enrollments (
+       id, school_id, student_id, on_feeding, on_bus, feeding_rate, bus_rate, active, enrolled_on, enrolled_by
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      crypto.randomUUID(),
+      args.schoolId,
+      args.studentId,
+      onF,
+      onB,
+      fRate,
+      bRate,
+      active,
+      todayIso(),
+      args.enrolledBy || null,
+    ],
+  );
+}
+
 
 async function postDouble(
   sql: SqlClient,
@@ -1424,6 +1540,7 @@ export const collectService = createServerFn({ method: "POST" })
       feedingAmount: z.number().positive().optional(),
       busAmount: z.number().positive().optional(),
       notes: z.string().optional(),
+      collectedOn: z.string().optional(),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -1431,7 +1548,8 @@ export const collectService = createServerFn({ method: "POST" })
     const me = await ensureStaff(sql, context.userId);
     if (!canServices(me.role)) throw new Error("Service desk access required");
     await ensureServiceReceipts(sql);
-    const term = termFromDate(new Date().toISOString().slice(0, 10));
+    const collectedOn = (data.collectedOn || todayIso()).slice(0, 10);
+    const term = termFromDate(collectedOn);
     const officer = `${me.first_name} ${me.last_name}`.trim();
     const lines: { kind: "BUS" | "FEEDING"; amount: number }[] = [];
     if (data.kind === "BOTH") {
@@ -1453,8 +1571,8 @@ export const collectService = createServerFn({ method: "POST" })
       const id = crypto.randomUUID();
       const receiptNo = issueReceiptNo("SVC");
       await sql.query(
-        `insert into service_collections (id, school_id, kind, student_id, amount, notes, recorded_by, recorded_name, term, receipt_no)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        `insert into service_collections (id, school_id, kind, student_id, amount, notes, recorded_by, recorded_name, term, receipt_no, collected_on)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           id,
           me.school_id,
@@ -1466,11 +1584,12 @@ export const collectService = createServerFn({ method: "POST" })
           officer,
           term,
           receiptNo,
+          collectedOn,
         ],
       );
       await postDouble(sql, {
         schoolId: me.school_id,
-        date: todayIso(),
+        date: collectedOn,
         term,
         refType: "SERVICE",
         refId: id,
@@ -1484,6 +1603,15 @@ export const collectService = createServerFn({ method: "POST" })
       await writeAudit(sql, me, "SERVICE", "service", id, `${line.kind} · ${receiptNo} · ${line.amount} · by ${officer}`);
       ids.push(id);
       receipts.push({ id, receiptNo, kind: line.kind });
+      if (data.studentId) {
+        await upsertServiceEnrollment(sql, {
+          schoolId: me.school_id,
+          studentId: data.studentId,
+          onFeeding: line.kind === "FEEDING" ? true : undefined,
+          onBus: line.kind === "BUS" ? true : undefined,
+          enrolledBy: me.user_id,
+        });
+      }
     }
 
     let sms: { ok: boolean; mocked?: boolean; error?: string; provider?: string } = {
@@ -1533,12 +1661,13 @@ export const listServices = createServerFn({ method: "GET" })
       amount: string;
       notes: string | null;
       collected_at: string;
+      collected_on: string | null;
       student: string | null;
       recorded_name: string | null;
       class_name: string | null;
       receipt_no: string;
     }>(
-      `select c.id, c.kind, c.amount::text, c.notes, c.collected_at::text,
+      `select c.id, c.kind, c.amount::text, c.notes, c.collected_at::text, c.collected_on::text,
               case when s.id is null then null else s.first_name || ' ' || s.last_name end as student,
               coalesce(c.recorded_name, nullif(trim(st.first_name || ' ' || st.last_name), '')) as recorded_name,
               s.class_name,
@@ -1550,6 +1679,167 @@ export const listServices = createServerFn({ method: "GET" })
       [me.school_id],
     );
   });
+
+export const listServiceRoster = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ monday: z.string().optional() }))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canServices(me.role)) throw new Error("Service desk access required");
+    await ensureServiceReceipts(sql);
+    const monday = mondayOf(data.monday);
+    const days = weekDayIsos(monday);
+    const friday = days[4];
+    const enrolled = await sql.query<{
+      id: string;
+      student_id: string;
+      first_name: string;
+      last_name: string;
+      admission_no: string;
+      class_name: string;
+      on_feeding: boolean;
+      on_bus: boolean;
+      feeding_rate: string;
+      bus_rate: string;
+    }>(
+      `select e.id, e.student_id, s.first_name, s.last_name, s.admission_no, s.class_name,
+              e.on_feeding, e.on_bus, e.feeding_rate::text, e.bus_rate::text
+       from service_enrollments e
+       join students s on s.id = e.student_id
+       where e.school_id = $1 and e.active = true and (e.on_feeding = true or e.on_bus = true)
+         and coalesce(s.status,'ACTIVE') <> 'GRADUATED'`,
+      [me.school_id],
+    );
+    const paid = await sql.query<{
+      id: string;
+      student_id: string;
+      kind: string;
+      amount: string;
+      collected_on: string;
+      receipt_no: string;
+      collected_at: string;
+    }>(
+      `select c.id, c.student_id, c.kind, c.amount::text, c.collected_on::text as collected_on,
+              coalesce(c.receipt_no, c.id) as receipt_no, c.collected_at::text
+       from service_collections c
+       where c.school_id = $1 and c.student_id is not null
+         and c.collected_on >= $2 and c.collected_on <= $3
+       order by c.collected_at desc`,
+      [me.school_id, monday, friday],
+    );
+    type Cell = { id: string; amount: number; receiptNo: string };
+    const cells = new Map<string, Cell>();
+    for (const p of paid) {
+      const key = `${p.student_id}|${p.kind}|${p.collected_on}`;
+      const prev = cells.get(key);
+      if (prev) {
+        prev.amount += num(p.amount);
+      } else {
+        cells.set(key, { id: p.id, amount: num(p.amount), receiptNo: p.receipt_no });
+      }
+    }
+    const pupils = enrolled
+      .map((e) => {
+        const feeding: Record<string, Cell> = {};
+        const bus: Record<string, Cell> = {};
+        for (const day of days) {
+          const f = cells.get(`${e.student_id}|FEEDING|${day}`);
+          const b = cells.get(`${e.student_id}|BUS|${day}`);
+          if (f) feeding[day] = f;
+          if (b) bus[day] = b;
+        }
+        return {
+          enrollmentId: e.id,
+          studentId: e.student_id,
+          firstName: e.first_name,
+          lastName: e.last_name,
+          name: `${e.first_name} ${e.last_name}`.trim(),
+          admissionNo: e.admission_no,
+          className: e.class_name || "Unassigned",
+          onFeeding: Boolean(e.on_feeding),
+          onBus: Boolean(e.on_bus),
+          feedingRate: num(e.feeding_rate),
+          busRate: num(e.bus_rate),
+          feeding,
+          bus,
+        };
+      })
+      .sort(
+        (a, b) =>
+          sortClass(a.className, b.className) ||
+          sortAlpha(a.firstName, b.firstName) ||
+          sortAlpha(a.lastName, b.lastName),
+      );
+    const groups: { className: string; students: typeof pupils }[] = [];
+    for (const p of pupils) {
+      const last = groups[groups.length - 1];
+      if (last && last.className === p.className) last.students.push(p);
+      else groups.push({ className: p.className, students: [p] });
+    }
+    return { monday, days, groups, n: pupils.length };
+  });
+
+export const enrollOnService = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    z.object({
+      studentId: z.string().min(1),
+      onFeeding: z.boolean(),
+      onBus: z.boolean(),
+      feedingRate: z.number().min(0).optional(),
+      busRate: z.number().min(0).optional(),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canServices(me.role)) throw new Error("Service desk access required");
+    await ensureServiceReceipts(sql);
+    if (!data.onFeeding && !data.onBus) throw new Error("Tick feeding, bus, or both");
+    const st = await sql.query<{ id: string; first_name: string; last_name: string }>(
+      `select id, first_name, last_name from students where id = $1 and school_id = $2`,
+      [data.studentId, me.school_id],
+    );
+    if (!st[0]) throw new Error("Student is not enrolled in the school");
+    await upsertServiceEnrollment(sql, {
+      schoolId: me.school_id,
+      studentId: data.studentId,
+      onFeeding: data.onFeeding,
+      onBus: data.onBus,
+      feedingRate: data.feedingRate,
+      busRate: data.busRate,
+      enrolledBy: me.user_id,
+    });
+    await writeAudit(
+      sql,
+      me,
+      "SERVICE_ENROLL",
+      "service_enrollments",
+      data.studentId,
+      `${st[0].first_name} ${st[0].last_name} · feeding=${data.onFeeding} bus=${data.onBus}`,
+    );
+    return { ok: true };
+  });
+
+export const dropFromService = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ studentId: z.string().min(1) }))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canServices(me.role)) throw new Error("Service desk access required");
+    await ensureServiceReceipts(sql);
+    await sql.query(
+      `update service_enrollments
+       set on_feeding = false, on_bus = false, active = false
+       where school_id = $1 and student_id = $2`,
+      [me.school_id, data.studentId],
+    );
+    await writeAudit(sql, me, "SERVICE_DROP", "service_enrollments", data.studentId, "Removed from feeding/bus list");
+    return { ok: true };
+  });
+
 
 export const seedClasses = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

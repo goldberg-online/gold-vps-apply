@@ -137,4 +137,11 @@
     print-color-adjust: exact;
     box-shadow: none !important;
   }
+  .register-sheet {
+    box-shadow: none !important;
+    border-color: #0b5559 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
 }
