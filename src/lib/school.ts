@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { applyPasswordToUser } from "@/lib/password";
+import { cleanEmail } from "@/lib/credentials";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
@@ -2334,7 +2335,7 @@ export const inviteStaff = createServerFn({ method: "POST" })
     if (me.role === "ACCOUNTANT" && data.role === "SUPER_ADMIN") {
       throw new Error("Accountant cannot create a Super Admin login");
     }
-    const email = data.email.toLowerCase().trim();
+    const email = cleanEmail(data.email);
     const name = `${data.firstName.trim()} ${data.lastName.trim()}`.trim();
     const existingStaff = await sql.query<{ id: string; user_id: string }>(
       `select id, user_id from staff where school_id = $1 and lower(email) = $2`,
@@ -2941,7 +2942,7 @@ export const updateStaffProfile = createServerFn({ method: "POST" })
     const sql = await getSql();
     const me = await ensureStaff(sql, context.userId);
     requireSuper(me.role);
-    const email = data.email.toLowerCase().trim();
+    const email = cleanEmail(data.email);
     const row = await sql.query<{ user_id: string }>(
       `select user_id from staff where id = $1 and school_id = $2`,
       [data.id, me.school_id],

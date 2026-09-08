@@ -1,8 +1,8 @@
 #!/bin/bash
-# GOLD VPS apply pack 20260908-r5
+# GOLD VPS apply pack 20260908-r6
 # Do not put receipt.$id.tsx in an unquoted bash array — set -u aborts on $id.
 set -euo pipefail
-echo "GOLD apply pack 20260908-r5"
+echo "GOLD apply pack 20260908-r6"
 
 ROOT=/var/www/gold
 test -f "$ROOT/package.json" || { echo "Need $ROOT — are you on the DIS VPS?"; exit 1; }
@@ -71,6 +71,8 @@ grep -q 'Feeding / bus fee list' "$ROOT/src/routes/app/services.tsx" || { echo "
 grep -q PhoneRegister "$ROOT/src/routes/app/services.tsx" || { echo "phone feeding/bus layout did not land"; exit 1; }
 grep -q updateServiceTick "$ROOT/src/lib/school.ts" || { echo "editable ticks did not land"; exit 1; }
 grep -q skipEnroll "$ROOT/src/lib/school.ts" || { echo "fast till collect did not land"; exit 1; }
+grep -q cleanPassword "$ROOT/src/lib/credentials.ts" || { echo "phone login cleaner did not land"; exit 1; }
+grep -q loginErrorMessage "$ROOT/src/routes/login.tsx" || { echo "phone login page did not land"; exit 1; }
 echo "OK $n files under $ROOT"
 
 echo
@@ -81,4 +83,4 @@ systemctl restart gold
 sleep 2
 systemctl is-active gold && echo "GOLD is running."
 echo "Done. Hard-refresh the site (Ctrl+Shift+R)."
-echo "Look for: Bus & feeding — tap a tick to edit/clear; ticks show at once."
+echo "Look for: Sign in on a phone — extra spaces stripped, Show password, WhatsApp in-app warning."

@@ -5,6 +5,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { completePasswordReset, requestPasswordReset } from "@/lib/password";
 import { noteLogin } from "@/lib/school";
 import { Button, Field, Input } from "@/components/ui";
+import { cleanEmail, cleanPassword, inAppBrowser, loginErrorMessage } from "@/lib/credentials";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -18,6 +19,8 @@ function Login() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [warnInApp] = useState(() => inAppBrowser());
 
   if (!isPending && user && mode !== "forgot" && mode !== "reset") return <Navigate to="/app" />;
 
@@ -26,9 +29,13 @@ function Login() {
     setError(null);
     setNote(null);
     setBusy(true);
+    const emailClean = cleanEmail(email);
+    const passwordClean = cleanPassword(password);
+    setEmail(emailClean);
+    setPassword(passwordClean);
     try {
       if (mode === "forgot") {
-        const res = await requestPasswordReset({ data: { email } });
+        const res = await requestPasswordReset({ data: { email: emailClean } });
         setToken(res.token);
         setMode("reset");
         setNote("Email matched the account. Set a new password now.");
@@ -36,7 +43,7 @@ function Login() {
       }
       if (mode === "reset") {
         await completePasswordReset({
-          data: { email, token, password, confirm },
+          data: { email: emailClean, token, password: passwordClean, confirm: cleanPassword(confirm) },
         });
         setMode("in");
         setPassword("");
@@ -46,15 +53,15 @@ function Login() {
         return;
       }
       const res = await authClient.signIn.email({
-        email: email.trim().toLowerCase(),
-        password,
+        email: emailClean,
+        password: passwordClean,
         callbackURL: "/app",
       });
-      if (res.error) throw new Error(res.error.message || "Could not sign in");
+      if (res.error) throw new Error(loginErrorMessage(res.error.message || "Could not sign in"));
       await noteLogin().catch(() => undefined);
-      window.location.href = "/app";
+      window.location.assign("/app");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(loginErrorMessage(err instanceof Error ? err.message : "Sign-in failed"));
     } finally {
       setBusy(false);
     }
@@ -81,7 +88,7 @@ function Login() {
         <p className="mt-4 text-base text-foam">Christ is our light</p>
       </section>
       <div className="relative z-10 flex min-h-screen items-center justify-center p-4 lg:bg-surface lg:p-12">
-      <div className="w-full max-w-md space-y-6 rounded-[20px] border border-line bg-surface p-8 text-fg shadow-[0_12px_40px_rgba(13,33,55,0.18)] lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+      <div className="w-full max-w-md space-y-6 rounded-[20px] border border-line bg-surface p-6 text-fg shadow-[0_12px_40px_rgba(13,33,55,0.18)] sm:p-8 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
         <div className="flex items-start gap-3 lg:hidden">
           <img
             src="/school-crest.jpg"
@@ -106,59 +113,102 @@ function Login() {
           <p className="mt-1 text-sm text-muted">Issued emails only. No public sign-up.</p>
         </div>
 
+        {warnInApp ? (
+          <p className="rounded-[12px] border border-ribbon/60 bg-foam/40 px-3 py-3 text-sm text-navy">
+            You opened this inside another app. Sign-in on a phone must be in Chrome or Safari — tap the menu
+            (⋮ or AA) and choose <span className="font-medium">Open in browser</span>, then try again.
+          </p>
+        ) : null}
+
         {!authEnabled ? (
           <p className="text-sm text-muted">Sign-in is disabled.</p>
         ) : (
           <>
-            <form className="space-y-3" onSubmit={submit}>
+            <form className="space-y-3" onSubmit={submit} autoComplete="on">
               <Field label="Email used on the account">
                 <Input
+                  id="login-email"
+                  name="email"
                   type="email"
+                  inputMode="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={(e) => setEmail(cleanEmail(e.target.value))}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
+                  className="text-base"
                 />
               </Field>
               {mode === "in" ? (
                 <Field label="Password">
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={8}
-                    autoComplete="current-password"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="login-password"
+                      name="password"
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="current-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="go"
+                      className="pr-16 text-base"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 px-3 text-xs font-medium text-navy"
+                      onClick={() => setShowPw((v) => !v)}
+                    >
+                      {showPw ? "Hide" : "Show"}
+                    </button>
+                  </div>
                 </Field>
               ) : null}
               {mode === "reset" ? (
                 <>
                   <Field label="New password">
                     <Input
-                      type="password"
+                      type={showPw ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       minLength={8}
                       autoComplete="new-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="text-base"
                     />
                   </Field>
                   <Field label="Confirm new password">
                     <Input
-                      type="password"
+                      type={showPw ? "text" : "password"}
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
                       required
                       minLength={8}
                       autoComplete="new-password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="text-base"
                     />
                   </Field>
+                  <button type="button" className="text-xs text-navy underline" onClick={() => setShowPw((v) => !v)}>
+                    {showPw ? "Hide passwords" : "Show passwords"}
+                  </button>
                 </>
               ) : null}
               {error ? <p className="text-sm text-bad">{error}</p> : null}
               {note ? <p className="text-sm text-good">{note}</p> : null}
-              <Button type="submit" className="w-full" disabled={busy}>
+              <Button type="submit" className="w-full min-h-12 text-base" disabled={busy}>
                 {busy
                   ? "Please wait…"
                   : mode === "forgot"
