@@ -124,7 +124,7 @@ function Login() {
           <p className="text-sm text-muted">Sign-in is disabled.</p>
         ) : (
           <>
-            <form className="space-y-3" onSubmit={submit} autoComplete="on">
+            <form className="space-y-3" method="post" action="/login" onSubmit={submit} autoComplete="on">
               <Field label="Email used on the account">
                 <Input
                   id="login-email"

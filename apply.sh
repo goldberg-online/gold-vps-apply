@@ -1,8 +1,8 @@
 #!/bin/bash
-# GOLD VPS apply pack 20260908-r6
+# GOLD VPS apply pack 20260908-r7
 # Do not put receipt.$id.tsx in an unquoted bash array — set -u aborts on $id.
 set -euo pipefail
-echo "GOLD apply pack 20260908-r6"
+echo "GOLD apply pack 20260908-r7"
 
 ROOT=/var/www/gold
 test -f "$ROOT/package.json" || { echo "Need $ROOT — are you on the DIS VPS?"; exit 1; }
@@ -31,13 +31,17 @@ cp -a "$SRCROOT" "$WORKDIR"
 echo "Unpacked $WORKDIR"
 
 test -d "$WORKDIR/src" && test -d "$WORKDIR/migrations" || { echo "Pack missing src or migrations"; exit 1; }
-mkdir -p "$ROOT/src" "$ROOT/migrations"
+mkdir -p "$ROOT/src" "$ROOT/migrations" "$ROOT/server/middleware" "$ROOT/public" "$ROOT/deploy"
 cp -a "$WORKDIR/src/." "$ROOT/src/"
 cp -a "$WORKDIR/migrations/." "$ROOT/migrations/"
+if [ -d "$WORKDIR/server" ]; then cp -a "$WORKDIR/server/." "$ROOT/server/"; fi
+if [ -f "$WORKDIR/public/robots.txt" ]; then cp -a "$WORKDIR/public/robots.txt" "$ROOT/public/robots.txt"; fi
+if [ -f "$WORKDIR/vite.config.ts" ]; then cp -a "$WORKDIR/vite.config.ts" "$ROOT/vite.config.ts"; fi
+if [ -f "$WORKDIR/deploy/nginx-dis-online.conf" ]; then cp -a "$WORKDIR/deploy/nginx-dis-online.conf" "$ROOT/deploy/nginx-dis-online.conf"; fi
 
 n=0
 list=/tmp/gold-apply-files.txt
-find "$WORKDIR/src" "$WORKDIR/migrations" -type f | sort > "$list"
+find "$WORKDIR/src" "$WORKDIR/migrations" "$WORKDIR/server" -type f | sort > "$list"
 while IFS= read -r f; do
   rel=${f#"$WORKDIR"/}
   dest="$ROOT/$rel"
@@ -73,6 +77,9 @@ grep -q updateServiceTick "$ROOT/src/lib/school.ts" || { echo "editable ticks di
 grep -q skipEnroll "$ROOT/src/lib/school.ts" || { echo "fast till collect did not land"; exit 1; }
 grep -q cleanPassword "$ROOT/src/lib/credentials.ts" || { echo "phone login cleaner did not land"; exit 1; }
 grep -q loginErrorMessage "$ROOT/src/routes/login.tsx" || { echo "phone login page did not land"; exit 1; }
+grep -q isScannerUA "$ROOT/server/shield-core.ts" || { echo "site shield did not land"; exit 1; }
+grep -q DIS-SHIELD "$ROOT/server/middleware/00-shield.ts" "$ROOT/server/shield-core.ts" 2>/dev/null || true
+grep -q 'noai, noimageai' "$ROOT/src/routes/__root.tsx" || { echo "noindex robots meta did not land"; exit 1; }
 echo "OK $n files under $ROOT"
 
 echo
@@ -83,4 +90,4 @@ systemctl restart gold
 sleep 2
 systemctl is-active gold && echo "GOLD is running."
 echo "Done. Hard-refresh the site (Ctrl+Shift+R)."
-echo "Look for: Sign in on a phone — extra spaces stripped, Show password, WhatsApp in-app warning."
+echo "Look for: crawlers get 404, robots.txt Disallow, staff still sign in."

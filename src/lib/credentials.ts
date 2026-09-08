@@ -28,6 +28,9 @@ export function loginErrorMessage(raw: string) {
   if (m.includes("origin") || m.includes("forbidden") || m.includes("csrf")) {
     return "This phone opened the site inside another app (often WhatsApp). Tap the menu and choose Open in Chrome or Safari, then sign in again.";
   }
+  if (m.includes("too many") || m.includes("429") || m.includes("rate")) {
+    return "Too many sign-in tries from this phone or computer. Wait 15 minutes, then try again.";
+  }
   if (
     m.includes("invalid") ||
     m.includes("password") ||

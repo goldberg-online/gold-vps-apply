@@ -1,12 +1,12 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { SystemProspectus } from "@/components/system-prospectus";
+import { UiGallery } from "@/components/ui-gallery";
 
-export const Route = createFileRoute("/online")({ component: Online });
+export const Route = createFileRoute("/designs")({ component: Designs });
 
-function Online() {
+function Designs() {
   const { user, isPending } = useCurrentUserState();
   if (isPending) return null;
   if (!user) return <Navigate to="/" />;
-  return <SystemProspectus signedIn />;
+  return <UiGallery signedIn />;
 }

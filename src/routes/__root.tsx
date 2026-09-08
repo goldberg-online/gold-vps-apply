@@ -12,6 +12,8 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: APP_NAME },
       { name: "theme-color", content: "#0f6e73" },
+      { name: "robots", content: "noindex, nofollow, noarchive, nosnippet, noai, noimageai" },
+      { name: "googlebot", content: "noindex, nofollow, noarchive, nosnippet" },
       {
         name: "description",
         content: "Doorbell International School — DIS ONLINE. Christ is our light.",
