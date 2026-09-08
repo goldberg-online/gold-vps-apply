@@ -194,7 +194,10 @@ function issueReceiptNo(tag: "RCP" | "SVC") {
   return `DIS-${tag}-${Date.now().toString().slice(-8)}${Math.floor(100 + Math.random() * 900)}`;
 }
 
+let serviceSchemaReady = false;
+
 async function ensureServiceReceipts(sql: SqlClient) {
+  if (serviceSchemaReady) return;
   await sql.query(`alter table service_collections add column if not exists receipt_no text`);
   await sql.query(
     `update service_collections
@@ -256,6 +259,7 @@ async function ensureServiceReceipts(sql: SqlClient) {
       ],
     );
   }
+  serviceSchemaReady = true;
 }
 
 async function upsertServiceEnrollment(
@@ -366,6 +370,61 @@ async function postDouble(
       args.userId,
     ],
   );
+}
+
+async function adjustServiceAmount(
+  sql: SqlClient,
+  me: StaffRow,
+  row: {
+    id: string;
+    kind: string;
+    amount: string | number;
+    term: string | null;
+    collected_on?: string | null;
+    receipt_no?: string | null;
+  },
+  newAmount: number,
+) {
+  const old = num(row.amount);
+  const next = Math.round(newAmount * 100) / 100;
+  const delta = Math.round((next - old) * 100) / 100;
+  if (Math.abs(delta) < 0.009) return { changed: false as const, amount: old };
+  const date = (row.collected_on || todayIso()).slice(0, 10);
+  const term = row.term || termFromDate(date);
+  const income = row.kind === "BUS" ? "BUS_INCOME" : "FEEDING_INCOME";
+  if (delta > 0) {
+    await postDouble(sql, {
+      schoolId: me.school_id,
+      date,
+      term,
+      refType: "SERVICE",
+      refId: row.id,
+      memo: `Adjust ${row.kind} ${row.receipt_no || row.id}`,
+      userId: me.user_id,
+      debitAccount: "CASH",
+      creditAccount: income,
+      amount: delta,
+    });
+  } else {
+    await postDouble(sql, {
+      schoolId: me.school_id,
+      date,
+      term,
+      refType: "VOID",
+      refId: row.id,
+      memo: `Adjust ${row.kind} ${row.receipt_no || row.id}`,
+      userId: me.user_id,
+      debitAccount: income,
+      creditAccount: "CASH",
+      amount: -delta,
+    });
+  }
+  await sql.query(`update service_collections set amount = $1 where id = $2 and school_id = $3`, [
+    next,
+    row.id,
+    me.school_id,
+  ]);
+  return { changed: true as const, amount: next };
 }
 
 async function logReceipt(
@@ -1541,6 +1600,8 @@ export const collectService = createServerFn({ method: "POST" })
       busAmount: z.number().positive().optional(),
       notes: z.string().optional(),
       collectedOn: z.string().optional(),
+      silent: z.boolean().optional(),
+      skipEnroll: z.boolean().optional(),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -1568,6 +1629,30 @@ export const collectService = createServerFn({ method: "POST" })
     const ids: string[] = [];
     const receipts: { id: string; receiptNo: string; kind: "BUS" | "FEEDING" }[] = [];
     for (const line of lines) {
+      if (data.studentId) {
+        const existing = await sql.query<{
+          id: string;
+          amount: string;
+          receipt_no: string | null;
+          kind: string;
+          term: string | null;
+          collected_on: string | null;
+        }>(
+          `select id, amount::text, receipt_no, kind, term, collected_on::text
+           from service_collections
+           where school_id = $1 and student_id = $2 and kind = $3 and collected_on = $4
+           order by collected_at desc
+           limit 1`,
+          [me.school_id, data.studentId, line.kind, collectedOn],
+        );
+        if (existing[0]) {
+          await adjustServiceAmount(sql, me, existing[0], line.amount);
+          const receiptNo = existing[0].receipt_no || existing[0].id;
+          receipts.push({ id: existing[0].id, receiptNo, kind: line.kind });
+          ids.push(existing[0].id);
+          continue;
+        }
+      }
       const id = crypto.randomUUID();
       const receiptNo = issueReceiptNo("SVC");
       await sql.query(
@@ -1603,7 +1688,7 @@ export const collectService = createServerFn({ method: "POST" })
       await writeAudit(sql, me, "SERVICE", "service", id, `${line.kind} · ${receiptNo} · ${line.amount} · by ${officer}`);
       ids.push(id);
       receipts.push({ id, receiptNo, kind: line.kind });
-      if (data.studentId) {
+      if (data.studentId && !data.skipEnroll) {
         await upsertServiceEnrollment(sql, {
           schoolId: me.school_id,
           studentId: data.studentId,
@@ -1618,7 +1703,7 @@ export const collectService = createServerFn({ method: "POST" })
       ok: true,
       mocked: true,
     };
-    if (data.studentId) {
+    if (data.studentId && !data.silent) {
       const st = await sql.query<{ student: string; parent_phone: string | null; phone: string | null }>(
         `select (first_name || ' ' || last_name) as student, parent_phone, phone
          from students where id = $1 and school_id = $2`,
@@ -1646,6 +1731,91 @@ export const collectService = createServerFn({ method: "POST" })
       }
     }
     return { ok: true, sms, n: lines.length, receipts };
+  });
+
+export const updateServiceTick = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string().min(1), amount: z.number().positive() }))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canServices(me.role)) throw new Error("Service desk access required");
+    const row = await sql.query<{
+      id: string;
+      kind: string;
+      amount: string;
+      term: string | null;
+      collected_on: string | null;
+      receipt_no: string | null;
+    }>(
+      `select id, kind, amount::text, term, collected_on::text, receipt_no
+       from service_collections where id = $1 and school_id = $2`,
+      [data.id, me.school_id],
+    );
+    if (!row[0]) throw new Error("That tick was not found");
+    await adjustServiceAmount(sql, me, row[0], data.amount);
+    await writeAudit(
+      sql,
+      me,
+      "SERVICE_EDIT",
+      "service",
+      row[0].id,
+      `${row[0].kind} · ${row[0].receipt_no || row[0].id} · ${data.amount}`,
+    );
+    return {
+      ok: true,
+      id: row[0].id,
+      amount: data.amount,
+      receiptNo: row[0].receipt_no || row[0].id,
+      kind: row[0].kind as "BUS" | "FEEDING",
+    };
+  });
+
+export const voidServiceTick = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string().min(1) }))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canServices(me.role)) throw new Error("Service desk access required");
+    const row = await sql.query<{
+      amount: string;
+      kind: string;
+      term: string | null;
+      collected_on: string | null;
+      receipt_no: string | null;
+    }>(
+      `select amount::text, kind, term, collected_on::text, receipt_no
+       from service_collections where id = $1 and school_id = $2`,
+      [data.id, me.school_id],
+    );
+    if (row[0]) {
+      await postDouble(sql, {
+        schoolId: me.school_id,
+        date: (row[0].collected_on || todayIso()).slice(0, 10),
+        term: row[0].term || termFromDate(row[0].collected_on || todayIso()),
+        refType: "VOID",
+        refId: data.id,
+        memo: `Clear ${row[0].kind} ${row[0].receipt_no || data.id}`,
+        userId: me.user_id,
+        debitAccount: row[0].kind === "BUS" ? "BUS_INCOME" : "FEEDING_INCOME",
+        creditAccount: "CASH",
+        amount: num(row[0].amount),
+      });
+      await writeAudit(
+        sql,
+        me,
+        "SERVICE_VOID",
+        "service",
+        data.id,
+        `Cleared ${row[0].kind} · ${row[0].receipt_no || data.id}`,
+      );
+    }
+    await sql.query(`delete from service_collections where id = $1 and school_id = $2`, [
+      data.id,
+      me.school_id,
+    ]);
+    return { ok: true };
   });
 
 export const listServices = createServerFn({ method: "GET" })
@@ -1732,12 +1902,8 @@ export const listServiceRoster = createServerFn({ method: "POST" })
     const cells = new Map<string, Cell>();
     for (const p of paid) {
       const key = `${p.student_id}|${p.kind}|${p.collected_on}`;
-      const prev = cells.get(key);
-      if (prev) {
-        prev.amount += num(p.amount);
-      } else {
-        cells.set(key, { id: p.id, amount: num(p.amount), receiptNo: p.receipt_no });
-      }
+      if (cells.has(key)) continue;
+      cells.set(key, { id: p.id, amount: num(p.amount), receiptNo: p.receipt_no });
     }
     const pupils = enrolled
       .map((e) => {

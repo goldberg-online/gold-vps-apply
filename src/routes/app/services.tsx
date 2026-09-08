@@ -11,6 +11,8 @@ import {
   listServiceRoster,
   listServices,
   listStudents,
+  updateServiceTick,
+  voidServiceTick,
 } from "@/lib/school";
 import {
   formatDayShort,
@@ -32,6 +34,18 @@ function tickLabel(n: number) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
+type PaidCell = { id: string; amount: number; receiptNo: string };
+type RosterPupil = {
+  studentId: string;
+  name: string;
+  onFeeding: boolean;
+  onBus: boolean;
+  feedingRate: number;
+  busRate: number;
+  feeding: Record<string, PaidCell>;
+  bus: Record<string, PaidCell>;
+};
+
 function ServicesPage() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: () => getMe() });
@@ -49,12 +63,28 @@ function ServicesPage() {
   const [printKind, setPrintKind] = useState<"ALL" | "FEEDING" | "BUS">("ALL");
   const [openRcpt, setOpenRcpt] = useState<string | null>(null);
   const [last, setLast] = useState<{ id: string; receiptNo: string; kind: string }[] | null>(null);
+  const [pending, setPending] = useState<Record<string, true>>({});
+  const [edit, setEdit] = useState<{
+    studentId: string;
+    name: string;
+    kind: "FEEDING" | "BUS";
+    day: string;
+    paid: PaidCell;
+    rate: number;
+  } | null>(null);
+  const [editAmt, setEditAmt] = useState("");
 
   const roster = useQuery({
     queryKey: ["svc-roster", monday],
     queryFn: () => listServiceRoster({ data: { monday } }),
+    staleTime: 20_000,
+    placeholderData: (prev) => prev,
   });
-  const list = useQuery({ queryKey: ["svc"], queryFn: () => listServices() });
+  const list = useQuery({
+    queryKey: ["svc"],
+    queryFn: () => listServices(),
+    staleTime: 60_000,
+  });
 
   const weekNo = termWeekNo(monday);
   const days = roster.data?.days ?? [];
@@ -107,32 +137,145 @@ function ServicesPage() {
     },
   });
 
-  const tickMut = useMutation({
-    mutationFn: (p: { studentId: string; kind: "FEEDING" | "BUS"; amount: number; collectedOn: string }) =>
-      collectService({
-        data: {
-          kind: p.kind,
-          studentId: p.studentId,
-          amount: p.amount,
-          collectedOn: p.collectedOn,
-        },
-      }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["svc-roster"] });
-      qc.invalidateQueries({ queryKey: ["svc"] });
-      qc.invalidateQueries({ queryKey: ["dash"] });
-      setLast(res.receipts ?? []);
-    },
-  });
+  function cellKey(studentId: string, kind: string, day: string) {
+    return `${studentId}|${kind}|${day}`;
+  }
 
-  function collectCell(studentId: string, kind: "FEEDING" | "BUS", day: string, rate: number) {
+  function patchRosterCell(
+    studentId: string,
+    kind: "FEEDING" | "BUS",
+    day: string,
+    cell: PaidCell | null,
+  ) {
+    qc.setQueryData(["svc-roster", monday], (old: typeof roster.data) => {
+      if (!old) return old;
+      return {
+        ...old,
+        groups: old.groups.map((g) => ({
+          ...g,
+          students: g.students.map((s) => {
+            if (s.studentId !== studentId) return s;
+            const bag = { ...(kind === "FEEDING" ? s.feeding : s.bus) };
+            if (cell) bag[day] = cell;
+            else delete bag[day];
+            return kind === "FEEDING" ? { ...s, feeding: bag } : { ...s, bus: bag };
+          }),
+        })),
+      };
+    });
+  }
+
+  function patchRosterRates(
+    studentId: string,
+    feedingRate: number,
+    busRate: number,
+    onFeeding: boolean,
+    onBus: boolean,
+  ) {
+    qc.setQueryData(["svc-roster", monday], (old: typeof roster.data) => {
+      if (!old) return old;
+      return {
+        ...old,
+        groups: old.groups.map((g) => ({
+          ...g,
+          students: g.students.map((s) =>
+            s.studentId === studentId ? { ...s, feedingRate, busRate, onFeeding, onBus } : s,
+          ),
+        })),
+      };
+    });
+  }
+
+  async function collectCell(studentId: string, kind: "FEEDING" | "BUS", day: string, rate: number) {
     const typed = parseFloat(tickAmount);
     const amount = Number.isFinite(typed) && typed > 0 ? typed : rate;
     if (!amount || amount <= 0) {
       alert("Set this pupil’s daily rate when you put them on the list, or type an amount in “Tick with amount”.");
       return;
     }
-    tickMut.mutate({ studentId, kind, amount, collectedOn: day });
+    const k = cellKey(studentId, kind, day);
+    if (pending[k]) return;
+    setPending((p) => ({ ...p, [k]: true }));
+    const temp: PaidCell = { id: `pending:${k}`, amount, receiptNo: "…" };
+    patchRosterCell(studentId, kind, day, temp);
+    try {
+      const res = await collectService({
+        data: {
+          kind,
+          studentId,
+          amount,
+          collectedOn: day,
+          silent: true,
+          skipEnroll: true,
+        },
+      });
+      const r = res.receipts?.[0];
+      if (r) {
+        patchRosterCell(studentId, kind, day, { id: r.id, amount, receiptNo: r.receiptNo });
+        setLast(res.receipts);
+      }
+    } catch (e) {
+      patchRosterCell(studentId, kind, day, null);
+      alert((e as Error).message);
+    } finally {
+      setPending((p) => {
+        const n = { ...p };
+        delete n[k];
+        return n;
+      });
+    }
+  }
+
+  function openPaid(
+    studentId: string,
+    name: string,
+    kind: "FEEDING" | "BUS",
+    day: string,
+    paid: PaidCell,
+    rate: number,
+  ) {
+    const typed = parseFloat(tickAmount);
+    if (Number.isFinite(typed) && typed > 0 && Math.abs(typed - paid.amount) >= 0.009) {
+      void savePaidAmount(studentId, kind, day, paid, typed);
+      return;
+    }
+    setEdit({ studentId, name, kind, day, paid, rate });
+    setEditAmt(tickLabel(paid.amount) || String(paid.amount));
+  }
+
+  async function savePaidAmount(
+    studentId: string,
+    kind: "FEEDING" | "BUS",
+    day: string,
+    paid: PaidCell,
+    amount: number,
+  ) {
+    if (paid.id.startsWith("pending:")) return;
+    const prev = paid;
+    patchRosterCell(studentId, kind, day, { ...paid, amount });
+    try {
+      const res = await updateServiceTick({ data: { id: paid.id, amount } });
+      patchRosterCell(studentId, kind, day, {
+        id: res.id,
+        amount: res.amount,
+        receiptNo: res.receiptNo,
+      });
+    } catch (e) {
+      patchRosterCell(studentId, kind, day, prev);
+      alert((e as Error).message);
+    }
+  }
+
+  async function clearPaid(studentId: string, kind: "FEEDING" | "BUS", day: string, paid: PaidCell) {
+    if (paid.id.startsWith("pending:")) return;
+    const prev = paid;
+    patchRosterCell(studentId, kind, day, null);
+    try {
+      await voidServiceTick({ data: { id: paid.id } });
+    } catch (e) {
+      patchRosterCell(studentId, kind, day, prev);
+      alert((e as Error).message);
+    }
   }
 
   return (
@@ -141,7 +284,7 @@ function ServicesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl">Bus & feeding</h1>
           <p className="text-sm text-muted">
-            Only pupils put on feeding or bus appear here. Grouped by class. Works upright on a phone.
+            Only pupils put on feeding or bus appear here. Tap a box to tick. Tap a tick to change or clear it.
           </p>
         </div>
         <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => window.print()}>
@@ -333,8 +476,24 @@ function ServicesPage() {
                         students={g.students}
                         days={days}
                         today={today}
-                        busy={tickMut.isPending}
+                        pending={pending}
                         onCollect={collectCell}
+                        onPaid={openPaid}
+                        onSaveRates={(s, feedingRate, busRate) => {
+                          patchRosterRates(s.studentId, feedingRate, busRate, s.onFeeding, s.onBus);
+                          enrollOnService({
+                            data: {
+                              studentId: s.studentId,
+                              onFeeding: s.onFeeding,
+                              onBus: s.onBus,
+                              feedingRate,
+                              busRate,
+                            },
+                          }).catch((e) => {
+                            qc.invalidateQueries({ queryKey: ["svc-roster"] });
+                            alert((e as Error).message);
+                          });
+                        }}
                         onDrop={(studentId, name) => {
                           if (confirm(`Take ${name} off the feeding/bus list? Past receipts stay in the book.`)) {
                             dropFromService({ data: { studentId } }).then(() => {
@@ -347,8 +506,24 @@ function ServicesPage() {
                         students={g.students}
                         days={days}
                         today={today}
-                        busy={tickMut.isPending}
+                        pending={pending}
                         onCollect={collectCell}
+                        onPaid={openPaid}
+                        onSaveRates={(s, feedingRate, busRate) => {
+                          patchRosterRates(s.studentId, feedingRate, busRate, s.onFeeding, s.onBus);
+                          enrollOnService({
+                            data: {
+                              studentId: s.studentId,
+                              onFeeding: s.onFeeding,
+                              onBus: s.onBus,
+                              feedingRate,
+                              busRate,
+                            },
+                          }).catch((e) => {
+                            qc.invalidateQueries({ queryKey: ["svc-roster"] });
+                            alert((e as Error).message);
+                          });
+                        }}
                         onDrop={(studentId, name) => {
                           if (confirm(`Take ${name} off the feeding/bus list? Past receipts stay in the book.`)) {
                             dropFromService({ data: { studentId } }).then(() => {
@@ -363,9 +538,6 @@ function ServicesPage() {
               );
             })
           )}
-          {tickMut.isError ? (
-            <p className="px-4 py-3 text-sm text-bad">{(tickMut.error as Error).message}</p>
-          ) : null}
         </section>
       </div>
 
@@ -449,24 +621,145 @@ function ServicesPage() {
           </ul>
         )}
       </Card>
+
+      {edit ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-navy/40 p-3 sm:items-center"
+          onClick={() => setEdit(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-[16px] border border-line bg-surface p-4 shadow-[0_16px_40px_rgba(11,85,89,0.2)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-semibold text-navy">{edit.name}</p>
+            <p className="text-xs text-muted">
+              {edit.kind === "BUS" ? "Bus" : "Feeding"} · {formatDayShort(edit.day)} · {edit.paid.receiptNo}
+            </p>
+            <div className="mt-3">
+              <Field label="Amount (GH₵)">
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  inputMode="decimal"
+                  autoFocus
+                  value={editAmt}
+                  onChange={(e) => setEditAmt(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <Button
+                type="button"
+                onClick={() => {
+                  const n = parseFloat(editAmt);
+                  if (!Number.isFinite(n) || n <= 0) {
+                    alert("Enter a valid amount.");
+                    return;
+                  }
+                  const cur = edit;
+                  setEdit(null);
+                  void savePaidAmount(cur.studentId, cur.kind, cur.day, cur.paid, n);
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  const cur = edit;
+                  setEdit(null);
+                  void clearPaid(cur.studentId, cur.kind, cur.day, cur.paid);
+                }}
+              >
+                Clear
+              </Button>
+              <Link
+                to="/app/receipt/$id"
+                params={{ id: edit.paid.id }}
+                search={{ print: true }}
+                className="inline-flex min-h-11 items-center justify-center gap-1 rounded-[8px] border border-line text-sm text-navy"
+                onClick={() => setEdit(null)}
+              >
+                <Printer className="h-4 w-4" />
+                Print
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-type PaidCell = { id: string; amount: number; receiptNo: string };
-type RosterPupil = {
-  studentId: string;
-  name: string;
-  onFeeding: boolean;
-  onBus: boolean;
-  feedingRate: number;
-  busRate: number;
-  feeding: Record<string, PaidCell>;
-  bus: Record<string, PaidCell>;
-};
 type CollectFn = (studentId: string, kind: "FEEDING" | "BUS", day: string, rate: number) => void;
+type PaidFn = (
+  studentId: string,
+  name: string,
+  kind: "FEEDING" | "BUS",
+  day: string,
+  paid: PaidCell,
+  rate: number,
+) => void;
 
 const PHONE_DAYS = ["M", "T", "W", "T", "F"] as const;
+
+function RateLine({
+  s,
+  onSave,
+}: {
+  s: RosterPupil;
+  onSave: (feedingRate: number, busRate: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState(s.feedingRate ? String(s.feedingRate) : "");
+  const [b, setB] = useState(s.busRate ? String(s.busRate) : "");
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="text-left text-xs text-muted"
+        onClick={() => setOpen(true)}
+        title="Tap to change the usual daily amount"
+      >
+        {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
+        {" · "}
+        {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
+        <span className="ml-1 underline print:hidden">edit</span>
+      </button>
+    );
+  }
+  return (
+    <form
+      className="mt-1 flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(parseFloat(f) || 0, parseFloat(b) || 0);
+        setOpen(false);
+      }}
+    >
+      {s.onFeeding ? (
+        <label className="flex items-center gap-1 text-xs text-navy">
+          Feed
+          <Input className="h-9 w-16" type="number" min="0" step="0.01" inputMode="decimal" value={f} onChange={(e) => setF(e.target.value)} />
+        </label>
+      ) : null}
+      {s.onBus ? (
+        <label className="flex items-center gap-1 text-xs text-navy">
+          Bus
+          <Input className="h-9 w-16" type="number" min="0" step="0.01" inputMode="decimal" value={b} onChange={(e) => setB(e.target.value)} />
+        </label>
+      ) : null}
+      <Button type="submit" className="h-9 px-3 text-xs">
+        Save
+      </Button>
+      <button type="button" className="text-xs text-muted underline" onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+    </form>
+  );
+}
 
 function DayMark({
   on,
@@ -476,6 +769,7 @@ function DayMark({
   busy,
   kindLabel,
   onCollect,
+  onPaid,
 }: {
   on: boolean;
   paid?: PaidCell;
@@ -484,17 +778,18 @@ function DayMark({
   busy: boolean;
   kindLabel: string;
   onCollect: () => void;
+  onPaid?: () => void;
 }) {
   if (!on) {
     return <span className="block min-h-11 rounded-[6px] bg-bg" aria-hidden />;
   }
   if (paid) {
     return (
-      <Link
-        to="/app/receipt/$id"
-        params={{ id: paid.id }}
-        search={{ print: true }}
-        title={`Print ${kindLabel} receipt ${paid.receiptNo}`}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onPaid}
+        title={`Edit ${kindLabel} ${paid.receiptNo}`}
         className={cn(
           "flex min-h-11 w-full touch-manipulation flex-col items-center justify-center rounded-[6px] font-mono text-xs font-semibold text-navy",
           today ? "bg-foam/50" : "bg-bg",
@@ -502,7 +797,7 @@ function DayMark({
       >
         <span>{tickLabel(paid.amount)}</span>
         {Math.abs(paid.amount - rate) < 0.009 ? <span className="text-[9px] leading-none text-good">✓</span> : null}
-      </Link>
+      </button>
     );
   }
   return (
@@ -527,15 +822,19 @@ function PhoneRegister({
   students,
   days,
   today,
-  busy,
+  pending,
   onCollect,
+  onPaid,
+  onSaveRates,
   onDrop,
 }: {
   students: RosterPupil[];
   days: string[];
   today: string;
-  busy: boolean;
+  pending: Record<string, true>;
   onCollect: CollectFn;
+  onPaid: PaidFn;
+  onSaveRates: (s: RosterPupil, feedingRate: number, busRate: number) => void;
   onDrop: (studentId: string, name: string) => void;
 }) {
   return (
@@ -553,11 +852,7 @@ function PhoneRegister({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate font-medium text-navy">{s.name}</p>
-              <p className="text-xs text-muted">
-                {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
-                {" · "}
-                {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
-              </p>
+              <RateLine s={s} onSave={(f, b) => onSaveRates(s, f, b)} />
             </div>
             <button type="button" className="shrink-0 text-xs text-muted underline" onClick={() => onDrop(s.studentId, s.name)}>
               Remove
@@ -573,9 +868,10 @@ function PhoneRegister({
                   paid={s.feeding[day]}
                   rate={s.feedingRate}
                   today={day === today}
-                  busy={busy}
+                  busy={Boolean(pending[`${s.studentId}|FEEDING|${day}`])}
                   kindLabel="feeding"
                   onCollect={() => onCollect(s.studentId, "FEEDING", day, s.feedingRate)}
+                  onPaid={() => s.feeding[day] && onPaid(s.studentId, s.name, "FEEDING", day, s.feeding[day], s.feedingRate)}
                 />
               ))}
             </div>
@@ -590,9 +886,10 @@ function PhoneRegister({
                   paid={s.bus[day]}
                   rate={s.busRate}
                   today={day === today}
-                  busy={busy}
+                  busy={Boolean(pending[`${s.studentId}|BUS|${day}`])}
                   kindLabel="bus"
                   onCollect={() => onCollect(s.studentId, "BUS", day, s.busRate)}
+                  onPaid={() => s.bus[day] && onPaid(s.studentId, s.name, "BUS", day, s.bus[day], s.busRate)}
                 />
               ))}
             </div>
@@ -607,15 +904,19 @@ function DeskRegister({
   students,
   days,
   today,
-  busy,
+  pending,
   onCollect,
+  onPaid,
+  onSaveRates,
   onDrop,
 }: {
   students: RosterPupil[];
   days: string[];
   today: string;
-  busy: boolean;
+  pending: Record<string, true>;
   onCollect: CollectFn;
+  onPaid: PaidFn;
+  onSaveRates: (s: RosterPupil, feedingRate: number, busRate: number) => void;
   onDrop: (studentId: string, name: string) => void;
 }) {
   return (
@@ -658,11 +959,7 @@ function DeskRegister({
             <tr key={s.studentId} className={idx % 2 ? "bg-bg/80" : "bg-surface"}>
               <td className="px-3 py-2">
                 <p className="font-medium text-navy">{s.name}</p>
-                <p className="text-xs text-muted">
-                  {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
-                  {" · "}
-                  {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
-                </p>
+                <RateLine s={s} onSave={(f, b) => onSaveRates(s, f, b)} />
               </td>
               {days.map((day) => (
                 <DayCell
@@ -671,9 +968,10 @@ function DeskRegister({
                   paid={s.feeding[day]}
                   rate={s.feedingRate}
                   today={day === today}
-                  busy={busy}
+                  busy={Boolean(pending[`${s.studentId}|FEEDING|${day}`])}
                   kindLabel="feeding"
                   onCollect={() => onCollect(s.studentId, "FEEDING", day, s.feedingRate)}
+                  onPaid={() => s.feeding[day] && onPaid(s.studentId, s.name, "FEEDING", day, s.feeding[day], s.feedingRate)}
                 />
               ))}
               {days.map((day) => (
@@ -683,9 +981,10 @@ function DeskRegister({
                   paid={s.bus[day]}
                   rate={s.busRate}
                   today={day === today}
-                  busy={busy}
+                  busy={Boolean(pending[`${s.studentId}|BUS|${day}`])}
                   kindLabel="bus"
                   onCollect={() => onCollect(s.studentId, "BUS", day, s.busRate)}
+                  onPaid={() => s.bus[day] && onPaid(s.studentId, s.name, "BUS", day, s.bus[day], s.busRate)}
                 />
               ))}
               <td className="no-print px-2">
@@ -709,6 +1008,7 @@ function DayCell({
   busy,
   kindLabel,
   onCollect,
+  onPaid,
 }: {
   on: boolean;
   paid?: PaidCell;
@@ -717,13 +1017,23 @@ function DayCell({
   busy: boolean;
   kindLabel: string;
   onCollect: () => void;
+  onPaid?: () => void;
 }) {
   if (!on) {
     return <td className="border-l border-line bg-bg/50 px-1 py-1" aria-hidden />;
   }
   return (
     <td className={cn("border-l border-line px-0.5 py-1 text-center", today && "bg-foam/40")}>
-      <DayMark on paid={paid} rate={rate} today={today} busy={busy} kindLabel={kindLabel} onCollect={onCollect} />
+      <DayMark
+        on
+        paid={paid}
+        rate={rate}
+        today={today}
+        busy={busy}
+        kindLabel={kindLabel}
+        onCollect={onCollect}
+        onPaid={onPaid}
+      />
     </td>
   );
 }

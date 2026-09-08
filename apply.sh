@@ -1,8 +1,8 @@
 #!/bin/bash
-# GOLD VPS apply pack 20260908-r4
+# GOLD VPS apply pack 20260908-r5
 # Do not put receipt.$id.tsx in an unquoted bash array — set -u aborts on $id.
 set -euo pipefail
-echo "GOLD apply pack 20260908-r4"
+echo "GOLD apply pack 20260908-r5"
 
 ROOT=/var/www/gold
 test -f "$ROOT/package.json" || { echo "Need $ROOT — are you on the DIS VPS?"; exit 1; }
@@ -69,6 +69,8 @@ grep -q receipt-paid-mark "$ROOT/src/components/official-receipt.tsx" || { echo 
 grep -q 'Print feeding' "$ROOT/src/routes/app/services.tsx" || { echo "bus/feeding print did not land"; exit 1; }
 grep -q 'Feeding / bus fee list' "$ROOT/src/routes/app/services.tsx" || { echo "weekly register did not land"; exit 1; }
 grep -q PhoneRegister "$ROOT/src/routes/app/services.tsx" || { echo "phone feeding/bus layout did not land"; exit 1; }
+grep -q updateServiceTick "$ROOT/src/lib/school.ts" || { echo "editable ticks did not land"; exit 1; }
+grep -q skipEnroll "$ROOT/src/lib/school.ts" || { echo "fast till collect did not land"; exit 1; }
 echo "OK $n files under $ROOT"
 
 echo
@@ -79,4 +81,4 @@ systemctl restart gold
 sleep 2
 systemctl is-active gold && echo "GOLD is running."
 echo "Done. Hard-refresh the site (Ctrl+Shift+R)."
-echo "Look for: Bus & feeding on a phone — Feed/Bus rows, M T W T F, no sideways scroll."
+echo "Look for: Bus & feeding — tap a tick to edit/clear; ticks show at once."
