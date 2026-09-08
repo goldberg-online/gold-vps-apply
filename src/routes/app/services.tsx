@@ -137,21 +137,20 @@ function ServicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="no-print flex flex-wrap items-end justify-between gap-3">
+      <div className="no-print flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl">Bus & feeding</h1>
+          <h1 className="text-xl sm:text-2xl">Bus & feeding</h1>
           <p className="text-sm text-muted">
-            Only pupils put on feeding or bus appear here — not the whole school roll. Grouped by class,
-            names A–Z.
+            Only pupils put on feeding or bus appear here. Grouped by class. Works upright on a phone.
           </p>
         </div>
-        <Button type="button" variant="ghost" onClick={() => window.print()}>
+        <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={() => window.print()}>
           <Printer className="mr-2 h-4 w-4" />
           Print this week’s list
         </Button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
+      <div className="flex flex-col-reverse gap-6 xl:grid xl:grid-cols-[300px_1fr]">
         <div className="no-print space-y-6">
           <Card
             title="Put a pupil on the list"
@@ -230,7 +229,7 @@ function ServicesPage() {
         </div>
 
         <section className="register-sheet overflow-hidden rounded-[var(--radius-lg)] border-2 border-navy bg-surface shadow-[0_1px_2px_rgba(11,85,89,0.08)]">
-          <header className="border-b-2 border-navy px-4 py-4 text-center sm:px-6">
+          <header className="border-b-2 border-navy px-3 py-3 text-center sm:px-6 sm:py-4">
             <div className="flex items-center justify-center gap-3">
               <img
                 src="/school-crest.jpg"
@@ -277,29 +276,30 @@ function ServicesPage() {
             <p className="mt-1 text-xs text-muted">
               {formatDayShort(days[0] || monday)} – {formatDayShort(days[4] || monday)}
             </p>
-            <div className="no-print mt-3 flex flex-wrap items-end justify-center gap-3">
-              <div className="flex rounded-[8px] border border-line p-1">
+            <div className="no-print mt-3 grid gap-3 sm:flex sm:flex-wrap sm:items-end sm:justify-center">
+              <div className="grid grid-cols-3 rounded-[8px] border border-line p-1">
                 {(["ALL", "FEEDING", "BUS"] as const).map((k) => (
                   <button
                     key={k}
                     type="button"
                     className={cn(
-                      "h-10 rounded-[6px] px-3 text-xs font-medium",
+                      "h-11 rounded-[6px] px-1 text-xs font-medium sm:h-10 sm:px-3",
                       filter === k ? "bg-navy text-ink" : "text-navy",
                     )}
                     onClick={() => setFilter(k)}
                   >
-                    {k === "ALL" ? "All on the list" : k === "FEEDING" ? "Feeding only" : "Bus only"}
+                    {k === "ALL" ? "All" : k === "FEEDING" ? "Feeding" : "Bus"}
                   </button>
                 ))}
               </div>
               <Field label="Tick with amount (optional)">
                 <Input
-                  className="w-36"
+                  className="w-full sm:w-36"
                   type="number"
                   min="0.01"
                   step="0.01"
                   placeholder="Pupil’s rate"
+                  inputMode="decimal"
                   value={tickAmount}
                   onChange={(e) => setTickAmount(e.target.value)}
                 />
@@ -308,129 +308,60 @@ function ServicesPage() {
           </header>
 
           {roster.isLoading ? (
-            <p className="px-4 py-8 text-sm text-muted">Loading this week’s list…</p>
+            <p className="px-3 py-8 text-sm text-muted sm:px-4">Loading this week’s list…</p>
           ) : groups.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted">
+            <p className="px-3 py-8 text-sm text-muted sm:px-4">
               Nobody is on feeding or bus yet. Enrolled school pupils stay off this sheet until you put them
               on the list.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              {groups.map((g) => {
-                const open = openCls[g.className] !== false;
-                return (
-                  <div key={g.className} className="print-break border-t border-navy/20">
-                    <button
-                      type="button"
-                      className="flex min-h-11 w-full items-center justify-between bg-bg px-4 py-2 text-left"
-                      onClick={() => setOpenCls((m) => ({ ...m, [g.className]: !open }))}
-                    >
-                      <span className="font-semibold uppercase tracking-wide text-navy">{g.className}</span>
-                      <span className="text-xs text-muted">{g.students.length} on the list</span>
-                    </button>
-                    {open ? (
-                      <table className="w-full min-w-[720px] border-collapse text-sm">
-                        <thead>
-                          <tr className="bg-navy text-ink">
-                            <th rowSpan={2} className="sticky left-0 bg-navy px-3 py-2 text-left font-medium">
-                              Names
-                            </th>
-                            <th colSpan={5} className="border-l border-ink/20 px-2 py-2 text-center font-medium">
-                              Feeding fee
-                            </th>
-                            <th colSpan={5} className="border-l border-ink/20 px-2 py-2 text-center font-medium">
-                              Bus fee
-                            </th>
-                            <th rowSpan={2} className="no-print w-16" />
-                          </tr>
-                          <tr className="bg-navy-2 text-[10px] uppercase tracking-wide text-ink">
-                            {WEEKDAY_SHORT.map((d, i) => (
-                              <th
-                                key={`f-${d}`}
-                                className={cn(
-                                  "w-14 border-l border-ink/15 px-1 py-1 font-medium",
-                                  days[i] === today && "bg-ribbon",
-                                )}
-                              >
-                                {d}
-                              </th>
-                            ))}
-                            {WEEKDAY_SHORT.map((d, i) => (
-                              <th
-                                key={`b-${d}`}
-                                className={cn(
-                                  "w-14 border-l border-ink/15 px-1 py-1 font-medium",
-                                  days[i] === today && "bg-ribbon",
-                                )}
-                              >
-                                {d}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {g.students.map((s, idx) => (
-                            <tr key={s.studentId} className={idx % 2 ? "bg-bg/80" : "bg-surface"}>
-                              <td className="sticky left-0 bg-inherit px-3 py-2">
-                                <p className="font-medium text-navy">{s.name}</p>
-                                <p className="text-[11px] text-muted">
-                                  {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
-                                  {" · "}
-                                  {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
-                                </p>
-                              </td>
-                              {days.map((day) => (
-                                <DayCell
-                                  key={`f-${day}`}
-                                  on={s.onFeeding}
-                                  paid={s.feeding[day]}
-                                  rate={s.feedingRate}
-                                  today={day === today}
-                                  busy={tickMut.isPending}
-                                  kindLabel="feeding"
-                                  onCollect={() => collectCell(s.studentId, "FEEDING", day, s.feedingRate)}
-                                />
-                              ))}
-                              {days.map((day) => (
-                                <DayCell
-                                  key={`b-${day}`}
-                                  on={s.onBus}
-                                  paid={s.bus[day]}
-                                  rate={s.busRate}
-                                  today={day === today}
-                                  busy={tickMut.isPending}
-                                  kindLabel="bus"
-                                  onCollect={() => collectCell(s.studentId, "BUS", day, s.busRate)}
-                                />
-                              ))}
-                              <td className="no-print px-2">
-                                <button
-                                  type="button"
-                                  className="text-[11px] text-muted underline"
-                                  onClick={() => {
-                                    if (
-                                      confirm(
-                                        `Take ${s.name} off the feeding/bus list? Past receipts stay in the book.`,
-                                      )
-                                    ) {
-                                      dropFromService({ data: { studentId: s.studentId } }).then(() => {
-                                        qc.invalidateQueries({ queryKey: ["svc-roster"] });
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+            groups.map((g) => {
+              const open = openCls[g.className] !== false;
+              return (
+                <div key={g.className} className="print-break border-t border-navy/20">
+                  <button
+                    type="button"
+                    className="flex min-h-11 w-full items-center justify-between bg-bg px-3 py-2 text-left sm:px-4"
+                    onClick={() => setOpenCls((m) => ({ ...m, [g.className]: !open }))}
+                  >
+                    <span className="font-semibold uppercase tracking-wide text-navy">{g.className}</span>
+                    <span className="text-xs text-muted">{g.students.length} on the list</span>
+                  </button>
+                  {open ? (
+                    <>
+                      <PhoneRegister
+                        students={g.students}
+                        days={days}
+                        today={today}
+                        busy={tickMut.isPending}
+                        onCollect={collectCell}
+                        onDrop={(studentId, name) => {
+                          if (confirm(`Take ${name} off the feeding/bus list? Past receipts stay in the book.`)) {
+                            dropFromService({ data: { studentId } }).then(() => {
+                              qc.invalidateQueries({ queryKey: ["svc-roster"] });
+                            });
+                          }
+                        }}
+                      />
+                      <DeskRegister
+                        students={g.students}
+                        days={days}
+                        today={today}
+                        busy={tickMut.isPending}
+                        onCollect={collectCell}
+                        onDrop={(studentId, name) => {
+                          if (confirm(`Take ${name} off the feeding/bus list? Past receipts stay in the book.`)) {
+                            dropFromService({ data: { studentId } }).then(() => {
+                              qc.invalidateQueries({ queryKey: ["svc-roster"] });
+                            });
+                          }
+                        }}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              );
+            })
           )}
           {tickMut.isError ? (
             <p className="px-4 py-3 text-sm text-bad">{(tickMut.error as Error).message}</p>
@@ -522,6 +453,254 @@ function ServicesPage() {
   );
 }
 
+type PaidCell = { id: string; amount: number; receiptNo: string };
+type RosterPupil = {
+  studentId: string;
+  name: string;
+  onFeeding: boolean;
+  onBus: boolean;
+  feedingRate: number;
+  busRate: number;
+  feeding: Record<string, PaidCell>;
+  bus: Record<string, PaidCell>;
+};
+type CollectFn = (studentId: string, kind: "FEEDING" | "BUS", day: string, rate: number) => void;
+
+const PHONE_DAYS = ["M", "T", "W", "T", "F"] as const;
+
+function DayMark({
+  on,
+  paid,
+  rate,
+  today,
+  busy,
+  kindLabel,
+  onCollect,
+}: {
+  on: boolean;
+  paid?: PaidCell;
+  rate: number;
+  today: boolean;
+  busy: boolean;
+  kindLabel: string;
+  onCollect: () => void;
+}) {
+  if (!on) {
+    return <span className="block min-h-11 rounded-[6px] bg-bg" aria-hidden />;
+  }
+  if (paid) {
+    return (
+      <Link
+        to="/app/receipt/$id"
+        params={{ id: paid.id }}
+        search={{ print: true }}
+        title={`Print ${kindLabel} receipt ${paid.receiptNo}`}
+        className={cn(
+          "flex min-h-11 w-full touch-manipulation flex-col items-center justify-center rounded-[6px] font-mono text-xs font-semibold text-navy",
+          today ? "bg-foam/50" : "bg-bg",
+        )}
+      >
+        <span>{tickLabel(paid.amount)}</span>
+        {Math.abs(paid.amount - rate) < 0.009 ? <span className="text-[9px] leading-none text-good">✓</span> : null}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onCollect}
+      title={`Collect ${kindLabel}${rate ? ` GH₵ ${tickLabel(rate)}` : ""}`}
+      className={cn(
+        "flex min-h-11 w-full touch-manipulation items-center justify-center rounded-[6px] border border-dashed border-line text-muted hover:border-navy hover:text-navy",
+        today && "bg-foam/30",
+      )}
+    >
+      <span className="sr-only">
+        Collect {kindLabel} {tickLabel(rate)}
+      </span>
+    </button>
+  );
+}
+
+function PhoneRegister({
+  students,
+  days,
+  today,
+  busy,
+  onCollect,
+  onDrop,
+}: {
+  students: RosterPupil[];
+  days: string[];
+  today: string;
+  busy: boolean;
+  onCollect: CollectFn;
+  onDrop: (studentId: string, name: string) => void;
+}) {
+  return (
+    <div className="lg:hidden print:hidden">
+      <div className="grid grid-cols-[2.75rem_repeat(5,minmax(0,1fr))] gap-1 border-b border-line bg-navy px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-ink">
+        <span />
+        {PHONE_DAYS.map((d, i) => (
+          <span key={`h-${d}-${i}`} className={days[i] === today ? "text-foam" : undefined}>
+            {d}
+          </span>
+        ))}
+      </div>
+      {students.map((s) => (
+        <article key={s.studentId} className="border-b border-line px-3 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-navy">{s.name}</p>
+              <p className="text-xs text-muted">
+                {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
+                {" · "}
+                {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
+              </p>
+            </div>
+            <button type="button" className="shrink-0 text-xs text-muted underline" onClick={() => onDrop(s.studentId, s.name)}>
+              Remove
+            </button>
+          </div>
+          {s.onFeeding ? (
+            <div className="mt-2 grid grid-cols-[2.75rem_repeat(5,minmax(0,1fr))] gap-1">
+              <span className="self-center text-[10px] font-semibold uppercase tracking-wide text-navy">Feed</span>
+              {days.map((day) => (
+                <DayMark
+                  key={`f-${day}`}
+                  on
+                  paid={s.feeding[day]}
+                  rate={s.feedingRate}
+                  today={day === today}
+                  busy={busy}
+                  kindLabel="feeding"
+                  onCollect={() => onCollect(s.studentId, "FEEDING", day, s.feedingRate)}
+                />
+              ))}
+            </div>
+          ) : null}
+          {s.onBus ? (
+            <div className="mt-1 grid grid-cols-[2.75rem_repeat(5,minmax(0,1fr))] gap-1">
+              <span className="self-center text-[10px] font-semibold uppercase tracking-wide text-navy">Bus</span>
+              {days.map((day) => (
+                <DayMark
+                  key={`b-${day}`}
+                  on
+                  paid={s.bus[day]}
+                  rate={s.busRate}
+                  today={day === today}
+                  busy={busy}
+                  kindLabel="bus"
+                  onCollect={() => onCollect(s.studentId, "BUS", day, s.busRate)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function DeskRegister({
+  students,
+  days,
+  today,
+  busy,
+  onCollect,
+  onDrop,
+}: {
+  students: RosterPupil[];
+  days: string[];
+  today: string;
+  busy: boolean;
+  onCollect: CollectFn;
+  onDrop: (studentId: string, name: string) => void;
+}) {
+  return (
+    <div className="hidden overflow-x-auto lg:block print:block">
+      <table className="w-full table-fixed border-collapse text-sm">
+        <thead>
+          <tr className="bg-navy text-ink">
+            <th rowSpan={2} className="w-[22%] px-3 py-2 text-left font-medium">
+              Names
+            </th>
+            <th colSpan={5} className="border-l border-ink/20 px-2 py-2 text-center font-medium">
+              Feeding fee
+            </th>
+            <th colSpan={5} className="border-l border-ink/20 px-2 py-2 text-center font-medium">
+              Bus fee
+            </th>
+            <th rowSpan={2} className="no-print w-16" />
+          </tr>
+          <tr className="bg-navy-2 text-[10px] uppercase tracking-wide text-ink">
+            {WEEKDAY_SHORT.map((d, i) => (
+              <th
+                key={`f-${d}`}
+                className={cn("border-l border-ink/15 px-1 py-1 font-medium", days[i] === today && "bg-ribbon")}
+              >
+                {d}
+              </th>
+            ))}
+            {WEEKDAY_SHORT.map((d, i) => (
+              <th
+                key={`b-${d}`}
+                className={cn("border-l border-ink/15 px-1 py-1 font-medium", days[i] === today && "bg-ribbon")}
+              >
+                {d}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s, idx) => (
+            <tr key={s.studentId} className={idx % 2 ? "bg-bg/80" : "bg-surface"}>
+              <td className="px-3 py-2">
+                <p className="font-medium text-navy">{s.name}</p>
+                <p className="text-xs text-muted">
+                  {s.onFeeding ? `Feed ${tickLabel(s.feedingRate) || "—"}` : "No feeding"}
+                  {" · "}
+                  {s.onBus ? `Bus ${tickLabel(s.busRate) || "—"}` : "No bus"}
+                </p>
+              </td>
+              {days.map((day) => (
+                <DayCell
+                  key={`f-${day}`}
+                  on={s.onFeeding}
+                  paid={s.feeding[day]}
+                  rate={s.feedingRate}
+                  today={day === today}
+                  busy={busy}
+                  kindLabel="feeding"
+                  onCollect={() => onCollect(s.studentId, "FEEDING", day, s.feedingRate)}
+                />
+              ))}
+              {days.map((day) => (
+                <DayCell
+                  key={`b-${day}`}
+                  on={s.onBus}
+                  paid={s.bus[day]}
+                  rate={s.busRate}
+                  today={day === today}
+                  busy={busy}
+                  kindLabel="bus"
+                  onCollect={() => onCollect(s.studentId, "BUS", day, s.busRate)}
+                />
+              ))}
+              <td className="no-print px-2">
+                <button type="button" className="text-xs text-muted underline" onClick={() => onDrop(s.studentId, s.name)}>
+                  Remove
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DayCell({
   on,
   paid,
@@ -532,7 +711,7 @@ function DayCell({
   onCollect,
 }: {
   on: boolean;
-  paid?: { id: string; amount: number; receiptNo: string };
+  paid?: PaidCell;
   rate: number;
   today: boolean;
   busy: boolean;
@@ -542,33 +721,9 @@ function DayCell({
   if (!on) {
     return <td className="border-l border-line bg-bg/50 px-1 py-1" aria-hidden />;
   }
-  if (paid) {
-    return (
-      <td className={cn("border-l border-line px-0.5 py-1 text-center", today && "bg-foam/40")}>
-        <Link
-          to="/app/receipt/$id"
-          params={{ id: paid.id }}
-          search={{ print: true }}
-          title={`Print ${kindLabel} receipt ${paid.receiptNo}`}
-          className="inline-flex min-h-10 min-w-10 flex-col items-center justify-center rounded-[6px] px-1 font-mono text-xs font-semibold text-navy hover:bg-foam"
-        >
-          <span>{tickLabel(paid.amount)}</span>
-          {Math.abs(paid.amount - rate) < 0.009 ? <span className="text-[9px] text-good">✓</span> : null}
-        </Link>
-      </td>
-    );
-  }
   return (
-    <td className={cn("border-l border-line px-0.5 py-1 text-center", today && "bg-foam/30")}>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onCollect}
-        title={`Collect ${kindLabel}${rate ? ` GH₵ ${tickLabel(rate)}` : ""}`}
-        className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-[6px] border border-dashed border-line text-[10px] text-muted hover:border-navy hover:text-navy"
-      >
-        <span className="sr-only">Collect {kindLabel} {tickLabel(rate)}</span>
-      </button>
+    <td className={cn("border-l border-line px-0.5 py-1 text-center", today && "bg-foam/40")}>
+      <DayMark on paid={paid} rate={rate} today={today} busy={busy} kindLabel={kindLabel} onCollect={onCollect} />
     </td>
   );
 }

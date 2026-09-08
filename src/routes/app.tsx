@@ -117,7 +117,7 @@ function AppShell() {
       <UniformBackdrop wash="bg-navy/45" />
       <IdleLogout role={meQ.data?.me.role} />
       <header className="sticky top-0 z-30 border-b border-navy/20 bg-navy/92 text-ink backdrop-blur-sm print:hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-3 px-3 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <img
               src="/school-crest.jpg"
@@ -197,7 +197,7 @@ function AppShell() {
         </p>
         <UserButton />
       </div>
-      <div className="relative z-10 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="relative z-10 px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:py-6">
         <Outlet />
       </div>
     </div>

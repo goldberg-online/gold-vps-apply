@@ -1,11 +1,11 @@
 # GOLD DIS ONLINE — VPS apply pack
 
-On the DigitalOcean droplet, paste this **one** command (pinned pack, not the cached old script):
+On the DigitalOcean droplet:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/goldberg-online/gold-vps-apply/main/apply.sh | bash
 ```
 
-The first line must be `GOLD apply pack 20260908-r3`. Then it copies files into `/var/www/gold`, runs `npm run build:vps`, and restarts GOLD.
+First line must be `GOLD apply pack 20260908-r4`.
 
-Look for **Bus & feeding**: weekly FEEDING / BUS FEE LIST, only pupils put on feeding or bus, grouped by class.
+Phone: Bus & feeding shows Feed / Bus rows with M T W T F — no rotate, no sideways scroll.
