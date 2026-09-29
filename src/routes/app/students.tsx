@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { deleteStudent, enrollStudent, getMe, getStudentRecord, listStudents, updateStudent } from "@/lib/school";
 import { getCumulativeRecord } from "@/lib/academic-ops";
 import { CumulativeRecordSheet } from "@/components/cumulative-record";
@@ -40,6 +40,10 @@ function Avatar({ src, name }: { src?: string | null; name: string }) {
   );
 }
 
+function nameKey(first: string, last: string) {
+  return `${first} ${last}`.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function FamiliesPage() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: () => getMe() });
@@ -50,6 +54,26 @@ function FamiliesPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [openClass, setOpenClass] = useState<string | null>(null);
   const [find, setFind] = useState("");
+  const [dupOpen, setDupOpen] = useState(true);
+  const dupGroups = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof list.data>>();
+    for (const s of list.data ?? []) {
+      const key = nameKey(s.first_name, s.last_name);
+      if (!key) continue;
+      const bucket = map.get(key) ?? [];
+      bucket.push(s);
+      map.set(key, bucket);
+    }
+    return [...map.values()].filter((g) => g.length > 1);
+  }, [list.data]);
+  const dupKeys = useMemo(() => new Set(dupGroups.map((g) => nameKey(g[0].first_name, g[0].last_name))), [dupGroups]);
+  const delDup = useMutation({
+    mutationFn: (id: string) => deleteStudent({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["dash"] });
+    },
+  });
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -94,6 +118,82 @@ function FamiliesPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
+      {dupGroups.length > 0 && dupOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy/70 p-4" role="dialog" aria-modal="true" aria-labelledby="dup-title">
+          <div className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-[16px] border border-line bg-surface p-5 shadow-xl">
+            <h2 id="dup-title" className="text-lg font-semibold text-navy">Same names enrolled more than once</h2>
+            <p className="mt-1 text-sm text-muted">
+              {dupGroups.length} name{dupGroups.length === 1 ? "" : "s"} match more than one admission. Keep the correct record and remove the extra one.
+            </p>
+            <ul className="mt-4 space-y-4">
+              {dupGroups.map((group) => {
+                const title = `${group[0].first_name} ${group[0].last_name}`;
+                return (
+                  <li key={nameKey(group[0].first_name, group[0].last_name)} className="rounded-[12px] border border-gold/50 bg-bg p-3">
+                    <p className="font-semibold text-navy">{title}</p>
+                    <ul className="mt-2 space-y-2">
+                      {group.map((s) => (
+                        <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span>
+                            <span className="font-mono text-xs text-muted">{s.admission_no}</span>
+                            <span className="mt-0.5 block">
+                              {s.class_name || "Unassigned"}
+                              {s.enrolled_on ? ` · enrolled ${s.enrolled_on}` : ""}
+                            </span>
+                          </span>
+                          <span className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                setFind(s.admission_no);
+                                setOpenClass(s.class_name || "Unassigned");
+                                setOpenId(s.id);
+                                setDupOpen(false);
+                              }}
+                            >
+                              Open
+                            </Button>
+                            {isSuper ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={delDup.isPending}
+                                onClick={() => {
+                                  if (confirm(`Delete the extra record ${s.admission_no} for ${title}?`)) {
+                                    delDup.mutate(s.id);
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            ) : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+            {delDup.isError ? <p className="mt-3 text-sm text-bad">{(delDup.error as Error).message}</p> : null}
+            <Button type="button" className="mt-4 w-full" onClick={() => setDupOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {dupGroups.length > 0 && !dupOpen ? (
+        <div className="lg:col-span-2">
+          <button
+            type="button"
+            className="w-full rounded-[12px] border border-gold/50 bg-gold/10 px-4 py-3 text-left text-sm font-medium text-navy"
+            onClick={() => setDupOpen(true)}
+          >
+            {dupGroups.length} name{dupGroups.length === 1 ? "" : "s"} enrolled more than once — tap to fix
+          </button>
+        </div>
+      ) : null}
       {canEnroll ? (
         <Card
           title="Enroll family"
@@ -104,6 +204,12 @@ function FamiliesPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (mut.isPending) return;
+              const key = nameKey(form.firstName, form.lastName);
+              const hits = (list.data ?? []).filter((s) => nameKey(s.first_name, s.last_name) === key);
+              if (hits.length) {
+                const lines = hits.map((s) => `${s.admission_no} · ${s.class_name} · enrolled ${s.enrolled_on || "—"}`).join("\n");
+                if (!window.confirm(`This name is already enrolled:\n${lines}\n\nSave another record anyway?`)) return;
+              }
               mut.mutate();
             }}
           >
@@ -260,7 +366,7 @@ function FamiliesPage() {
                   {open ? (
                     <ul className="space-y-2 border-t border-line px-2 py-2">
                       {kids.map((s) => (
-                        <li key={s.id} className="rounded-[10px] bg-bg">
+                        <li key={s.id} className={`rounded-[10px] bg-bg ${dupKeys.has(nameKey(s.first_name, s.last_name)) ? "ring-2 ring-gold" : ""}`}>
                           <button
                             type="button"
                             className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm"
@@ -272,6 +378,9 @@ function FamiliesPage() {
                                 <span className="font-mono text-xs text-muted">{s.admission_no}</span>
                                 <span className="mt-0.5 block">
                                   {s.first_name} {s.last_name}
+                                  {dupKeys.has(nameKey(s.first_name, s.last_name)) ? (
+                                    <span className="ml-2 text-xs text-gold">Same name</span>
+                                  ) : null}
                                   {s.status && s.status !== "ACTIVE" ? (
                                     <span className="ml-2 text-xs text-gold">{s.status}</span>
                                   ) : null}
