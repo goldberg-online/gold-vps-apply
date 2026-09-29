@@ -97,7 +97,7 @@ export function Prospectus({ signedIn }: { signedIn: boolean }) {
               alt="Doorbell International School crest"
               className="h-24 w-24 rounded-full border-2 border-ink/40 object-cover"
             />
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-foam">Private school · Accra, Ghana</p>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-foam">Private school · Somanya, Eastern Region</p>
             <h1 className="mt-3 max-w-xl text-3xl font-semibold uppercase leading-tight tracking-wide text-ink text-balance sm:text-5xl">
               Doorbell International School
             </h1>
@@ -119,7 +119,7 @@ export function Prospectus({ signedIn }: { signedIn: boolean }) {
 
         <Sheet>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Welcome</p>
-          <h2 className="mt-2 text-2xl font-semibold text-navy text-balance">A Christian private school in Accra</h2>
+          <h2 className="mt-2 text-2xl font-semibold text-navy text-balance">A Christian private school in Somanya</h2>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-pretty">
             Doorbell International School is a private day school. We take children from Creche through Junior High
             School, follow the Ghana Education Service and NaCCA curriculum, and raise them in the light of Christ.
@@ -281,8 +281,9 @@ export function Prospectus({ signedIn }: { signedIn: boolean }) {
           <h2 className="mt-2 text-2xl font-semibold text-ink">Christ is our light</h2>
           <p className="mt-3 flex items-start gap-2 text-sm text-foam">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            Accra, Ghana · info@dis.edu.gh
+            DC Road, Somanya, Eastern Region, Ghana
           </p>
+          <p className="mt-1 pl-6 text-sm text-foam">info@dis.edu.gh</p>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-foam">
             Enroll at the office. After enrollment, sign in to DIS ONLINE with the email the Accountant issued.
           </p>

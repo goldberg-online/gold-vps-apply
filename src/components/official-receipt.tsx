@@ -61,7 +61,7 @@ export function OfficialReceipt({
               <h1 className="mt-1 text-lg font-semibold uppercase leading-tight text-navy sm:text-xl">
                 Doorbell International School
               </h1>
-              <p className="mt-1 text-sm text-muted">Christ is our light · Accra, Ghana</p>
+              <p className="mt-1 text-sm text-muted">Christ is our light · DC Road, Somanya, Eastern Region</p>
             </div>
           </div>
           <div className="sm:text-right">

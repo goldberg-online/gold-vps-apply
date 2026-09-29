@@ -65,7 +65,7 @@ grep -q attachCumulativeCard "$ROOT/src/lib/school.ts" || { echo "school.ts did 
 grep -q "Pupils by class" "$ROOT/src/routes/app/cumulative.tsx" || { echo "cumulative page did not land"; exit 1; }
 grep -q postAnnouncement "$ROOT/src/lib/announcements.ts" || { echo "announcements lib did not land"; exit 1; }
 grep -q 'href: "/app/announcements"' "$ROOT/src/routes/app.tsx" || { echo "announcements menu did not land"; exit 1; }
-grep -q "A Christian private school in Accra" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus did not land"; exit 1; }
+grep -q "A Christian private school in Somanya" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus did not land"; exit 1; }
 grep -q "Sign in to the office" "$ROOT/src/components/prospectus.tsx" || { echo "prospectus sign-in CTA did not land"; exit 1; }
 grep -q 'return <Prospectus signedIn={!!user} />' "$ROOT/src/routes/index.tsx" || { echo "front page is not the school prospectus"; exit 1; }
 grep -q 'signOut("/")' "$ROOT/src/lib/auth/idle-logout.tsx" || { echo "idle logout did not land on prospectus"; exit 1; }

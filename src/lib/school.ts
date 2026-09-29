@@ -52,13 +52,13 @@ async function ensureStaff(
   await sql.query(
     `insert into schools (id, name, code, motto, address, email)
      values ($1, $2, $3, $4, $5, $6)
-     on conflict (id) do nothing`,
+     on conflict (id) do update set address = excluded.address`,
     [
       SCHOOL_ID,
       "Doorbell International School",
       SCHOOL_CODE,
       "Christ is our light",
-      "Accra, Ghana",
+      "DC Road, Somanya, Eastern Region, Ghana",
       "info@dis.edu.gh",
     ],
   );

@@ -99,7 +99,7 @@ function Look2() {
               <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-navy">Official receipt</p>
               <h3 className="mt-1 text-xl font-semibold uppercase leading-tight text-navy">Doorbell International School</h3>
-              <p className="mt-1 text-sm text-muted">Christ is our light · Accra, Ghana</p>
+              <p className="mt-1 text-sm text-muted">Christ is our light · DC Road, Somanya, Eastern Region</p>
               </div>
             </div>
             <div className="text-right">
