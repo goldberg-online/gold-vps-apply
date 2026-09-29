@@ -88,7 +88,23 @@ echo "OK $n files under $ROOT"
 echo
 echo "Building and restarting GOLD..."
 cd "$ROOT"
-npm run build:vps
+NITRO_PRESET="${NITRO_PRESET:-node-server}" npm run build:vps
+
+# The page asks for /assets/<hash>.js. A VPS build sometimes writes those
+# files under .vercel or dist while the running server reads .output/public.
+mkdir -p "$ROOT/.output/public/assets" "$ROOT/public/assets"
+find "$ROOT/.output" "$ROOT/.vercel" "$ROOT/dist" "$ROOT/node_modules/.nitro" \
+  -type f \( -name '*.js' -o -name '*.css' -o -name '*.map' \) -path '*/assets/*' \
+  -exec cp -a {} "$ROOT/.output/public/assets/" \; 2>/dev/null || true
+cp -a "$ROOT/.output/public/assets/." "$ROOT/public/assets/" 2>/dev/null || true
+login_js=$(find "$ROOT/.output/public/assets" "$ROOT/public/assets" -name 'login-*.js' 2>/dev/null | head -1 || true)
+if [ -z "$login_js" ]; then
+  echo "WARNING: no login-*.js in the asset folders. Sign-in may still fail."
+  find "$ROOT" -name 'login-*.js' 2>/dev/null | head -5 || true
+else
+  echo "Login script is on disk: $login_js"
+fi
+
 systemctl restart gold
 sleep 2
 systemctl is-active gold && echo "GOLD is running."
