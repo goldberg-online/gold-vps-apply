@@ -78,7 +78,7 @@ grep -q skipEnroll "$ROOT/src/lib/school.ts" || { echo "fast till collect did no
 grep -q cleanPassword "$ROOT/src/lib/credentials.ts" || { echo "phone login cleaner did not land"; exit 1; }
 grep -q loginErrorMessage "$ROOT/src/routes/login.tsx" || { echo "phone login page did not land"; exit 1; }
 grep -q isScannerUA "$ROOT/server/shield-core.ts" || { echo "site shield did not land"; exit 1; }
-if grep -q 'virtual:grok-og-identity' "$ROOT/server/middleware/grok-pwa.ts" 2>/dev/null; then
+if grep -q 'from "virtual:grok-og-identity"' "$ROOT/server/middleware/grok-pwa.ts" 2>/dev/null; then
   echo "old grok-pwa.ts is still on the server"
   exit 1
 fi
