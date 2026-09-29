@@ -38,6 +38,8 @@ if [ -d "$WORKDIR/server" ]; then cp -a "$WORKDIR/server/." "$ROOT/server/"; fi
 if [ -f "$WORKDIR/public/robots.txt" ]; then cp -a "$WORKDIR/public/robots.txt" "$ROOT/public/robots.txt"; fi
 if [ -f "$WORKDIR/vite.config.ts" ]; then cp -a "$WORKDIR/vite.config.ts" "$ROOT/vite.config.ts"; fi
 if [ -f "$WORKDIR/deploy/nginx-dis-online.conf" ]; then cp -a "$WORKDIR/deploy/nginx-dis-online.conf" "$ROOT/deploy/nginx-dis-online.conf"; fi
+# This file imports a plugin module we no longer ship. Leaving it breaks the build.
+rm -f "$ROOT/server/middleware/grok-pwa.ts"
 
 n=0
 list=/tmp/gold-apply-files.txt
