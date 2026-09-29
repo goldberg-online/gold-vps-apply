@@ -38,8 +38,6 @@ if [ -d "$WORKDIR/server" ]; then cp -a "$WORKDIR/server/." "$ROOT/server/"; fi
 if [ -f "$WORKDIR/public/robots.txt" ]; then cp -a "$WORKDIR/public/robots.txt" "$ROOT/public/robots.txt"; fi
 if [ -f "$WORKDIR/vite.config.ts" ]; then cp -a "$WORKDIR/vite.config.ts" "$ROOT/vite.config.ts"; fi
 if [ -f "$WORKDIR/deploy/nginx-dis-online.conf" ]; then cp -a "$WORKDIR/deploy/nginx-dis-online.conf" "$ROOT/deploy/nginx-dis-online.conf"; fi
-# This file imports a plugin module we no longer ship. Leaving it breaks the build.
-rm -f "$ROOT/server/middleware/grok-pwa.ts"
 
 n=0
 list=/tmp/gold-apply-files.txt
@@ -80,6 +78,10 @@ grep -q skipEnroll "$ROOT/src/lib/school.ts" || { echo "fast till collect did no
 grep -q cleanPassword "$ROOT/src/lib/credentials.ts" || { echo "phone login cleaner did not land"; exit 1; }
 grep -q loginErrorMessage "$ROOT/src/routes/login.tsx" || { echo "phone login page did not land"; exit 1; }
 grep -q isScannerUA "$ROOT/server/shield-core.ts" || { echo "site shield did not land"; exit 1; }
+if grep -q 'virtual:grok-og-identity' "$ROOT/server/middleware/grok-pwa.ts" 2>/dev/null; then
+  echo "old grok-pwa.ts is still on the server"
+  exit 1
+fi
 grep -q DIS-SHIELD "$ROOT/server/middleware/00-shield.ts" "$ROOT/server/shield-core.ts" 2>/dev/null || true
 grep -q 'noai, noimageai' "$ROOT/src/routes/__root.tsx" || { echo "noindex robots meta did not land"; exit 1; }
 grep -q ui-gallery "$ROOT/src/routes/designs.tsx" && { echo "designs still imports missing gallery"; exit 1; }

@@ -11,6 +11,22 @@ import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
 import { clientIp, decideShield } from "./server/shield-core.ts";
 
+/** Lets an old VPS copy of server/middleware/grok-pwa.ts build. It is deleted by apply.sh. */
+function grokOgStubPlugin(): Plugin {
+  const virtual = "virtual:grok-og-identity";
+  const resolved = "\0" + virtual;
+  return {
+    name: "gold:grok-og-stub",
+    resolveId(source) {
+      if (source === virtual) return resolved;
+    },
+    load(id) {
+      if (id !== resolved) return;
+      return `export const grokOgIdentity = { site: { name: "DIS ONLINE", shortName: "DIS ONLINE", description: "Doorbell International School — Christ is our light.", themeColor: "#0f6e73", backgroundColor: "#0c4a52", card: "summary", imagePath: "/og.jpg", imageAlt: "Doorbell International School" } };`;
+    },
+  };
+}
+
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
   try {
@@ -196,6 +212,7 @@ export default defineConfig(({ command, isPreview }) => ({
   resolve: { tsconfigPaths: true },
   plugins: [
     shieldPlugin(),
+    grokOgStubPlugin(),
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
