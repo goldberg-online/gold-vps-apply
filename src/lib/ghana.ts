@@ -187,6 +187,9 @@ export function shiftMonday(monday: string, weeks: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** 1st term 2026 opened Tuesday 8 September — week 1 is that school week. */
+const FIRST_TERM_OPEN_2026 = "2026-09-08";
+
 /** Week number within the GES term (1st = Sep, 2nd = Jan, 3rd = May). */
 export function termWeekNo(iso: string): number {
   const stamp = (iso || "").slice(0, 10);
@@ -194,8 +197,10 @@ export function termWeekNo(iso: string): number {
   const y = Number(stamp.slice(0, 4)) || new Date().getFullYear();
   const month = Number(stamp.slice(5, 7)) || 1;
   let start: string;
-  if (term === "1st Term") start = `${month >= 9 ? y : y - 1}-09-01`;
-  else if (term === "3rd Term") start = `${y}-05-01`;
+  if (term === "1st Term") {
+    const yearStart = month >= 9 ? y : y - 1;
+    start = yearStart === 2026 ? FIRST_TERM_OPEN_2026 : `${yearStart}-09-01`;
+  } else if (term === "3rd Term") start = `${y}-05-01`;
   else start = `${y}-01-07`;
   const a = Date.parse(`${mondayOf(start)}T12:00:00Z`);
   const b = Date.parse(`${mondayOf(stamp)}T12:00:00Z`);
