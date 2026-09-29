@@ -3735,6 +3735,27 @@ export const listLedger = createServerFn({ method: "POST" })
     );
   });
 
+export const feeMethodTotals = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const me = await ensureStaff(sql, context.userId);
+    if (!canFinance(me.role)) throw new Error("Finance access required");
+    const rows = await sql.query<{ method: string; total: string }>(
+      `select method, coalesce(sum(amount),0)::text as total
+       from payments
+       where school_id = $1 and coalesce(status, 'POSTED') = 'POSTED'
+       group by method`,
+      [me.school_id],
+    );
+    const sum = (method: string) => num(rows.find((r) => r.method === method)?.total);
+    return {
+      cash: sum("CASH"),
+      mobile: sum("MOBILE_MONEY"),
+      bank: sum("BANK_TRANSFER"),
+    };
+  });
+
 export const getCashDay = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ date: z.string().min(8) }))
